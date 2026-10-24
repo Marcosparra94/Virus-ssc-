@@ -5,6 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Virus!</title>
 <meta name="description" content="Virus! el juego de cartas, en línea y sin cuentas">
+<meta name="theme-color" content="#0F473A">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Virus!">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=Public+Sans:wght@400;600;700&display=swap" rel="stylesheet">
@@ -236,6 +243,20 @@ details.log div { padding: 2px 0; }
 @media (prefers-reduced-motion: reduce) { .card { transition: none; } .pop { animation: none; } .ot .oart { transition: none; } }
 @media (min-width: 420px) { .hero h1 { font-size: 64px; } }
 
+/* ---- chat de voz ---- */
+.vbtn { position: relative; width: 38px; font-size: 17px; padding: 0 0 2px; }
+.vbtn:not(.on) { opacity: .75; }
+.vbtn:not(.on)::after { content: ""; position: absolute; left: 8px; right: 8px; top: 50%; height: 2px; background: var(--warn); border-radius: 2px; transform: rotate(-35deg); }
+.vbtn.on { background: var(--green); border-color: var(--green); }
+.vbtn.busy { opacity: .5; }
+.vbtn.hear { box-shadow: 0 0 0 3px var(--glow), 0 0 0 5px var(--accent); }
+.netbar.vbar { background: var(--warn); }
+@media (prefers-reduced-motion: no-preference) { .vbtn { transition: box-shadow .12s, background .15s; } }
+
+/* ---- botón de instalar la app ---- */
+.installpill { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(14px + env(safe-area-inset-bottom, 0px)); z-index: 20; display: none; align-items: center; gap: 8px; border: 0; border-radius: 999px; padding: 11px 18px; font: 700 14px/1 'Public Sans', system-ui, sans-serif; background: var(--accent); color: var(--accent-ink); box-shadow: 0 6px 18px rgba(0, 0, 0, .28); }
+.installpill.show { display: inline-flex; }
+
 </style>
 </head>
 <body>
@@ -294,8 +315,124 @@ details.log div { padding: 2px 0; }
   function setStatus(s) { if (N.status === s) return; N.status = s; window.__netState = s; try { window.dispatchEvent(new Event('virus-net')); } catch (e) { } }
   const codeOf = path => String(path).split('/')[1];
 
+
+  // ---------- chat de voz (malla de llamadas WebRTC entre todos los jugadores) ----------
+  // Todos contestan las llamadas entrantes y reproducen el audio; solo quien enciende su micrófono llama a los demás.
+  const V = { on: false, busy: false, err: '', stream: null, calls: {}, audios: {}, peers: [], timer: null, meters: {}, ctx: null, pending: [], hear: false, errT: null };
+  const vEmit = () => { try { window.dispatchEvent(new Event('virus-voice')); } catch (e) { } };
+  function vErr(m) { V.err = m || ''; if (V.errT) clearTimeout(V.errT); if (m) V.errT = setTimeout(() => { V.err = ''; vEmit(); }, 9000); }
+  function vCtx() { if (!V.ctx) { try { V.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { } } if (V.ctx && V.ctx.state === 'suspended') { try { V.ctx.resume(); } catch (e) { } } return V.ctx; }
+  function meterFor(key, stream) {
+    try {
+      const c = vCtx(); if (!c) return;
+      const an = c.createAnalyser(); an.fftSize = 512;
+      const src = c.createMediaStreamSource(stream); src.connect(an);
+      V.meters[key] = { an, src, buf: new Uint8Array(an.fftSize), lvl: 0 };
+    } catch (e) { }
+  }
+  function dropMeter(key) { const m = V.meters[key]; if (m) { try { m.src.disconnect(); } catch (e) { } delete V.meters[key]; } }
+  function level(key) {
+    const m = V.meters[key]; if (!m) return 0;
+    m.an.getByteTimeDomainData(m.buf);
+    let sum = 0; for (let i = 0; i < m.buf.length; i++) { const d = (m.buf[i] - 128) / 128; sum += d * d; }
+    return Math.sqrt(sum / m.buf.length);
+  }
+  function maxRemote() { let mx = 0; Object.keys(V.meters).forEach(k => { if (k !== '_me') mx = Math.max(mx, level(k)); }); return mx; }
+  function tickMeters() {
+    const hear = maxRemote() > 0.02;
+    if (hear !== V.hear) { V.hear = hear; document.querySelectorAll('.vbtn').forEach(b => b.classList.toggle('hear', hear)); }
+  }
+  function playStream(key, stream) {
+    let a = V.audios[key];
+    if (!a) { a = document.createElement('audio'); a.autoplay = true; a.setAttribute('playsinline', ''); a.style.display = 'none'; document.body.appendChild(a); V.audios[key] = a; }
+    a.srcObject = stream;
+    const p = a.play(); if (p && p.catch) p.catch(() => { if (V.pending.indexOf(a) < 0) V.pending.push(a); });
+    dropMeter(key); meterFor(key, stream);
+    if (!V.timer) V.timer = setInterval(vTick, 250);
+  }
+  function stopStream(key) {
+    const a = V.audios[key]; if (a) { try { a.pause(); } catch (e) { } a.srcObject = null; if (a.parentNode) a.parentNode.removeChild(a); delete V.audios[key]; }
+    V.pending = V.pending.filter(x => x !== a); dropMeter(key);
+  }
+  // El navegador a veces bloquea la reproducción hasta que el usuario toca la pantalla
+  document.addEventListener('click', () => { vCtx(); V.pending.splice(0).forEach(a => { try { a.play(); } catch (e) { } }); }, true);
+  function hookCall(call) {
+    const key = 'c' + call.connectionId;
+    call.on('stream', st => playStream(key, st));
+    const end = () => stopStream(key);
+    call.on('close', end); call.on('error', end);
+  }
+  function wirePeer(peer) { peer.on('call', call => { try { call.answer(); hookCall(call); } catch (e) { } }); }
+  function ensureCalls() {
+    const P = N.peer;
+    if (!V.on || !V.stream || !P || P.destroyed || !P.open) return;
+    const want = V.peers.filter(id => id && id !== P.id);
+    Object.keys(V.calls).forEach(id => { // cerrar llamadas a quien ya no está o que nunca conectaron
+      const c = V.calls[id];
+      if (want.indexOf(id) < 0 || (!c.open && Date.now() - c._t > 10000)) { try { c.close(); } catch (e) { } delete V.calls[id]; }
+    });
+    want.forEach(id => {
+      if (V.calls[id]) return;
+      try {
+        const c = P.call(id, V.stream); c._t = Date.now(); V.calls[id] = c;
+        const gone = () => { if (V.calls[id] === c) delete V.calls[id]; };
+        c.on('close', gone); c.on('error', gone);
+      } catch (e) { }
+    });
+  }
+  function vTick() { tickMeters(); if (V.on) ensureCalls(); }
+  function hostPeerList() { return N.role === 'host' ? ['virus-' + N.code].concat(Object.keys(N.conns)) : []; }
+  function sendPeers() {
+    if (N.role !== 'host') return;
+    const ids = hostPeerList(); V.peers = ids;
+    Object.keys(N.conns).forEach(k => { const c = N.conns[k]; if (c.open) { try { c.send({ t: 'peers', ids }); } catch (e) { } } });
+    ensureCalls();
+  }
+  async function voiceOn() {
+    if (V.on || V.busy) return;
+    vErr('');
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      vErr(location.protocol === 'file:' ? 'El micrófono no funciona al abrir el archivo desde tu equipo; ábrelo desde el enlace de la página.' : 'Este navegador no permite usar el micrófono.');
+      return vEmit();
+    }
+    V.busy = true; vEmit();
+    let st;
+    try { st = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false }); }
+    catch (e) {
+      V.busy = false;
+      vErr(e && (e.name === 'NotAllowedError' || e.name === 'SecurityError') ? 'No diste permiso al micrófono. Actívalo en los permisos del sitio y vuelve a intentar.' : e && e.name === 'NotFoundError' ? 'No se encontró ningún micrófono.' : 'No se pudo abrir el micrófono.');
+      return vEmit();
+    }
+    if (!N.role) { st.getTracks().forEach(t => t.stop()); V.busy = false; return vEmit(); } // saliste de la sala mientras daba permiso
+    V.stream = st; V.on = true; V.busy = false;
+    st.getTracks().forEach(t => { t.onended = () => { if (V.stream === st) voiceOff(); }; });
+    if (!V.timer) V.timer = setInterval(vTick, 250);
+    ensureCalls(); vEmit();
+  }
+  function voiceOff() {
+    const was = V.on || V.busy;
+    if (V.stream) { V.stream.getTracks().forEach(t => { t.onended = null; try { t.stop(); } catch (e) { } }); }
+    V.stream = null; V.on = false; V.busy = false;
+    Object.keys(V.calls).forEach(id => { try { V.calls[id].close(); } catch (e) { } }); V.calls = {};
+    if (was) vEmit();
+  }
+  function voiceCleanup() {
+    voiceOff();
+    Object.keys(V.audios).forEach(stopStream);
+    V.peers = []; V.hear = false;
+    if (V.timer) { clearInterval(V.timer); V.timer = null; }
+    if (V.err) { V.err = ''; }
+  }
+  window.VIRUS_VOICE = {
+    on: () => V.on, busy: () => V.busy, err: () => V.err,
+    toggle: () => V.on ? (voiceOff(), undefined) : voiceOn(),
+    // solo para pruebas
+    _level: () => maxRemote(), _calls: () => Object.keys(V.calls).length, _audios: () => Object.keys(V.audios).length, _peers: () => V.peers.slice()
+  };
+
   function closeAll() {
     N.leaving = true;
+    voiceCleanup();
     if (N.retry) { clearTimeout(N.retry); N.retry = null; }
     Object.keys(N.conns).forEach(k => { try { N.conns[k].close(); } catch (e) { } });
     N.conns = {};
@@ -331,13 +468,14 @@ details.log div { padding: 2px 0; }
       let opened = false;
       const peer = new Peer('virus-' + code, peerOpts());
       N.peer = peer; N.role = 'host'; N.code = code; N.doc = doc; N.conns = {};
-      peer.on('open', () => { opened = true; saveHost(); res(); });
+      wirePeer(peer);
+      peer.on('open', () => { opened = true; saveHost(); V.peers = hostPeerList(); res(); });
       peer.on('error', err => {
         if (!opened) { closeAll(); rej(new Error(err.type === 'unavailable-id' ? 'code-in-use' : (err.type || 'peer-error'))); }
       });
       peer.on('disconnected', () => { setTimeout(() => { try { if (N.peer === peer && !peer.destroyed) peer.reconnect(); } catch (e) { } }, 1500); });
       peer.on('connection', conn => {
-        conn.on('open', () => { N.conns[conn.peer] = conn; try { conn.send({ t: 'state', doc: N.doc }); } catch (e) { } });
+        conn.on('open', () => { N.conns[conn.peer] = conn; try { conn.send({ t: 'state', doc: N.doc }); } catch (e) { } sendPeers(); });
         conn.on('data', m => {
           if (!m || typeof m !== 'object') return;
           if (m.t === 'hello') { try { conn.send({ t: 'state', doc: N.doc }); } catch (e) { } }
@@ -346,7 +484,7 @@ details.log div { padding: 2px 0; }
             if (!ok) { try { conn.send({ t: 'state', doc: N.doc }); } catch (e) { } }
           }
         });
-        const gone = () => { if (N.conns[conn.peer] === conn) delete N.conns[conn.peer]; };
+        const gone = () => { if (N.conns[conn.peer] === conn) { delete N.conns[conn.peer]; sendPeers(); } };
         conn.on('close', gone); conn.on('error', gone);
       });
     });
@@ -361,7 +499,7 @@ details.log div { padding: 2px 0; }
       const finish = v => { if (!done) { done = true; clearTimeout(to); resolve(v); } };
       const to = setTimeout(() => finish(false), 14000);
       const peer = new Peer(undefined, peerOpts());
-      N.peer = peer;
+      N.peer = peer; wirePeer(peer);
       peer.on('open', () => attach(peer, code, finish));
       peer.on('error', err => { if (err.type === 'peer-unavailable') finish(false); else if (!done && err.type !== 'network') finish(false); });
       peer.on('disconnected', () => { try { if (!peer.destroyed) peer.reconnect(); } catch (e) { } });
@@ -373,6 +511,7 @@ details.log div { padding: 2px 0; }
     conn.on('open', () => { try { conn.send({ t: 'hello' }); } catch (e) { } });
     conn.on('data', m => {
       if (m && m.t === 'state') { N.doc = m.doc; setStatus('ok'); if (finish) finish(true); notify(); }
+      else if (m && m.t === 'peers' && Array.isArray(m.ids)) { V.peers = m.ids.filter(x => typeof x === 'string'); ensureCalls(); }
     });
     const lost = () => { if (N.conn !== conn || N.leaving) return; setStatus('reconnecting'); scheduleRetry(code); };
     conn.on('close', lost); conn.on('error', lost);
@@ -385,7 +524,7 @@ details.log div { padding: 2px 0; }
       const p = N.peer;
       try {
         if (p && !p.destroyed && !p.disconnected) attach(p, code, null);
-        else { if (p && !p.destroyed) p.destroy(); const np = new Peer(undefined, peerOpts()); N.peer = np; np.on('open', () => attach(np, code, null)); np.on('error', () => { }); }
+        else { if (p && !p.destroyed) p.destroy(); const np = new Peer(undefined, peerOpts()); N.peer = np; wirePeer(np); np.on('open', () => attach(np, code, null)); np.on('error', () => { }); }
       } catch (e) { }
       // si no hay respuesta, vuelve a intentar
       N.retry = setTimeout(() => { N.retry = null; if (N.status === 'reconnecting') scheduleRetry(code); }, 6000);
@@ -628,7 +767,8 @@ const Engine = (function () {
       case 'bodies': return (a.dir === 1 || a.dir === -1) ? null : 'Elige un sentido.';
       case 'apparition': return g.discard.length ? null : 'No hay cartas en el descarte.';
       case 'overtime': return g.hands[u].length >= 2 ? null : 'Necesitas otras cartas en la mano.';
-      case 'spread': case 'glove': return null;
+      case 'spread': return (a.moves === undefined || okSpread(g, u, a.moves)) ? null : 'Ese contagio no es válido.';
+      case 'glove': return null;
       case 'suit': return 'Se juega como respuesta cuando te atacan.';
     }
     return 'Carta no válida.';
@@ -687,6 +827,37 @@ const Engine = (function () {
     return moves;
   }
 
+  // Contagio con elección: para cada virus propio, a qué órganos libres de otros jugadores puede pasar
+  function spreadOptions(g, u) {
+    const res = [];
+    g.bodies[u].forEach((sl, si) => {
+      const v = sl.m.find(x => x.t === 'v');
+      if (!v) return;
+      const opts = [];
+      g.order.forEach(p => {
+        if (p === u) return;
+        g.bodies[p].forEach((o, i) => { if (st(o) === 'free' && hit(v.c, o.o.c)) opts.push({ p, i }); });
+      });
+      res.push({ si, v, opts });
+    });
+    return res;
+  }
+  // ¿Son válidas las elecciones [{si, p, i}]? Cada virus va a un órgano libre ajeno, sin repetir órgano ni virus
+  function okSpread(g, u, moves) {
+    if (!Array.isArray(moves)) return false;
+    const usedS = {}, usedT = {};
+    for (const m of moves) {
+      if (!m || !Number.isInteger(m.si) || !Number.isInteger(m.i)) return false;
+      const sl = g.bodies[u][m.si], v = sl && sl.m.find(x => x.t === 'v');
+      if (!v || m.p === u || g.order.indexOf(m.p) < 0) return false;
+      const t = g.bodies[m.p][m.i];
+      if (!t || st(t) !== 'free' || !hit(v.c, t.o.c)) return false;
+      if (usedS[m.si] || usedT[m.p + ':' + m.i]) return false;
+      usedS[m.si] = 1; usedT[m.p + ':' + m.i] = 1;
+    }
+    return true;
+  }
+
   // ¿A quién perjudica esta jugada? (candidatos a responder con Traje de protección)
   function victims(g, u, c, a) {
     const others = g.order.filter(p => p !== u);
@@ -698,7 +869,7 @@ const Engine = (function () {
         case 'alien': v = [a.p1, a.p2].filter(p => p !== u); break;
         case 'failed': v = a.as === 'v' ? [a.pid] : []; break;
         case 'glove': case 'bodies': v = others; break;
-        case 'spread': v = spreadPlan(g, u, []).map(m => m.p); break;
+        case 'spread': v = (Array.isArray(a.moves) ? a.moves : spreadPlan(g, u, [])).map(m => m.p); break;
       }
     }
     return v.filter((p, i) => p && p !== u && v.indexOf(p) === i);
@@ -764,9 +935,9 @@ const Engine = (function () {
           L(nm(u) + ' intercambia ' + on(s1) + ' de ' + nm(a.p1) + ' por ' + on(s2) + ' de ' + nm(a.p2)); break;
         }
         case 'spread': {
-          const plan = spreadPlan(g, u, prot);
+          const plan = Array.isArray(a.moves) ? a.moves.filter(m => prot.indexOf(m.p) < 0) : spreadPlan(g, u, prot);
           plan.forEach(m => { const sl = body[m.si]; const v = sl.m.find(x => x.t === 'v'); sl.m = sl.m.filter(x => x !== v); g.bodies[m.p][m.i].m.push(v); });
-          D(c); L(nm(u) + ' contagia: pasa ' + plan.length + (plan.length === 1 ? ' virus' : ' virus')); break;
+          D(c); L(nm(u) + ' contagia: pasa ' + plan.length + ' virus' + (plan.length ? ' (' + plan.map(m => 'a ' + nm(m.p)).join(', ') + ')' : '')); break;
         }
         case 'glove':
           g.order.forEach(p => { if (p === u || prot.indexOf(p) >= 0) return; g.discard.push(...g.hands[p]); g.hands[p] = []; g.skip[p] = true; });
@@ -1000,7 +1171,7 @@ const Engine = (function () {
 
   return {
     COLORS, ONAME, TNAME, COUNTS, shuffle, buildDeck, newGame, st, hit, mm, canReceive, healthy, goal, cursed, canWin, hasSuit,
-    targetOK, playerOK, check, victims, spreadPlan, apply, respond, expirePending, redirect, noTarget, redirectCandidates,
+    targetOK, playerOK, check, victims, spreadPlan, spreadOptions, okSpread, apply, respond, expirePending, redirect, noTarget, redirectCandidates,
     discardCards, pass, timeoutTurn
   };
 })();
@@ -1576,7 +1747,28 @@ if (typeof module !== 'undefined') module.exports = Bot;
 
   // ¿El motor aceptaría jugar esta carta sin objetivo ahora mismo?
   const playableNow = c => !E.apply(g, me, c.i, {}, { noSuit: true }).err;
-  const needsNoTarget = c => (c.t === 'o' && !(c.c === 'mutant' && g.bodies[me].length)) || (c.t === 'x' && ['spread', 'glove', 'overtime', 'apparition'].indexOf(c.k) >= 0);
+  // Contagio: eliges, virus por virus, a qué órgano libre ajeno va (si no hay destinos posibles, se juega directo)
+  const spOpts = () => E.spreadOptions(g, me).filter(o => o.opts.length);
+  const needsNoTarget = c => (c.t === 'o' && !(c.c === 'mutant' && g.bodies[me].length)) || (c.t === 'x' && (['glove', 'overtime', 'apparition'].indexOf(c.k) >= 0 || (c.k === 'spread' && !spOpts().length)));
+  function spState() {
+    if (!ui.first || !ui.first.sp) ui.first = { sp: 1, k: 0, moves: [] };
+    const list = spOpts(), cur = list[ui.first.k];
+    if (cur) { ui.first.pid = me; ui.first.idx = cur.si; }
+    return { list, cur, k: ui.first.k, moves: ui.first.moves };
+  }
+  const spFree = (s, cur) => cur.opts.filter(t => !s.moves.some(m => m.p === t.p && m.i === t.i));
+  function spTargets() {
+    if (!(ui.sel && ui.sel.t === 'x' && ui.sel.k === 'spread')) return [];
+    const s = spState(); return s.cur ? spFree(s, s.cur) : [];
+  }
+  function spAdvance(move) {
+    const s = spState();
+    if (move && s.cur) s.moves.push({ si: s.cur.si, p: move.p, i: move.i });
+    ui.first.k++;
+    while (s.list[ui.first.k] && !spFree(s, s.list[ui.first.k]).length) ui.first.k++; // virus sin destino libre: se queda
+    if (ui.first.k >= s.list.length) return play({ moves: s.moves });
+    ui.err = ''; render();
+  }
   const needsPlayer = c => c.t === 'x' && ['error', 'second', 'trick'].indexOf(c.k) >= 0;
   const needsOrgan = c => !needsNoTarget(c) && !needsPlayer(c) && !(c.t === 'x' && (c.k === 'bodies' || c.k === 'suit'));
 
@@ -1584,6 +1776,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
     const c = ui.sel;
     if (!c || ui.disc || !(canAct() || inRedir())) return false;
     if (c.t === 'x' && c.k === 'failed' && !ui.mode) return false;
+    if (c.t === 'x' && c.k === 'spread') return spTargets().some(t => t.p === pid && t.i === idx);
     return E.targetOK(g, inRedir() ? g.redirect.u : me, c, pid, idx, ui.first, ui.mode, inRedir());
   }
   function playerTarget(pid) {
@@ -1603,6 +1796,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
       return;
     }
     if (!targetOK(pid, idx)) return;
+    if (c.t === 'x' && c.k === 'spread') return spAdvance({ p: pid, i: idx });
     if (c.t === 'x' && c.k === 'swap') {
       if (inRedir()) return play({ pid, idx, myIdx: g.redirect.a.myIdx });
       if (!ui.first) { ui.first = { pid, idx }; ui.err = ''; return render(); }
@@ -1717,7 +1911,19 @@ if (typeof module !== 'undefined') module.exports = Bot;
   }
 
   // ---------- vistas ----------
-  const netBanner = () => (P2P && window.__netState === 'reconnecting') ? '<div class="netbar">Reconectando con el anfitrión…</div>' : '';
+  const voiceErr = () => { const V = window.VIRUS_VOICE; return V && V.err() ? '<div class="netbar vbar">' + esc(V.err()) + '</div>' : ''; };
+  const netBanner = () => ((P2P && window.__netState === 'reconnecting') ? '<div class="netbar">Reconectando con el anfitrión…</div>' : '') + voiceErr();
+  const voiceBtn = () => {
+    const V = window.VIRUS_VOICE; if (!V) return '';
+    const on = V.on();
+    return '<button class="menubtn vbtn' + (on ? ' on' : '') + (V.busy() ? ' busy' : '') + '" data-act="voice" aria-pressed="' + on + '" aria-label="' + (on ? 'Apagar micrófono' : 'Encender micrófono') + '">🎤</button>';
+  };
+  const voiceBox = () => {
+    const V = window.VIRUS_VOICE; if (!V) return '';
+    const on = V.on();
+    return '<div class="card-box"><h3>Chat de voz</h3><p class="note" style="margin:0 0 8px">Habla con tus amigos mientras juegan. Todos escuchan automáticamente; tú decides cuándo encender tu micrófono. Con audífonos no hay eco.</p>' +
+      '<div class="bar"><button class="btn' + (on ? '' : ' alt') + '" data-act="voice">' + (V.busy() ? 'Abriendo micrófono…' : on ? '🎤 Micrófono encendido (toca para apagar)' : '🎤 Encender micrófono') + '</button></div></div>';
+  };
   const seen = new Set(); let seenReady = false, renderIds = [];
   const fresh = id => { renderIds.push(id); return seenReady && !seen.has(id); };
   const STLABEL = sl => sl.o.c === 'bionic' ? 'Biónico' : { free: 'Libre', infected: 'Infectado', vacc: 'Vacunado', immune: 'Inmunizado' }[E.st(sl)];
@@ -1829,6 +2035,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
       '<div class="card-box"><h3>Jugadores (' + ids.length + ')</h3><ul class="plist">' + list + '</ul>' +
       (host ? '<div class="bar"><button class="btn alt" data-act="addbot"' + (ids.length >= 6 ? ' disabled' : '') + '>Agregar bot</button></div>' +
         '<p class="note" style="margin:8px 0 0">' + (P2P ? 'Tu navegador es el anfitrión: no cierres esta página mientras juegan (si la cierras, al reabrirla la partida continúa).' : 'Los bots juegan desde tu navegador: deja esta página abierta mientras juegan.') + '</p>' : '') + '</div>' +
+      voiceBox() +
       '<div class="card-box"><h3>Tu avatar</h3><div class="avgrid">' + picker + '</div></div>' +
       '<div class="card-box"><h3>Cartas y modos</h3><p class="note" style="margin:0 0 8px">' + (host ? 'Elige qué se juega.' : 'Las elige el anfitrión.') + '</p><div class="opts">' + opts + '</div></div>' +
       '<div class="card-box">' + (ui.err ? '<p class="err" style="margin-top:0">' + esc(ui.err) + '</p>' : '') + '<div class="bar">' +
@@ -1889,7 +2096,11 @@ if (typeof module !== 'undefined') module.exports = Bot;
       case 'trick': return 'Toca al jugador que quedará maldito: no podrá ganar.';
       case 'bodies': return 'Elige el sentido en que todos pasan su cuerpo.';
       case 'suit': return 'Se juega como respuesta cuando alguien te ataca.';
-      case 'spread': return 'Pasa tus virus a órganos libres de otros jugadores.';
+      case 'spread': {
+        if (!spOpts().length) return 'No tienes virus que puedan pasar a otros órganos libres.';
+        const s = spState();
+        return s.cur ? 'Contagio · virus ' + (s.k + 1) + ' de ' + s.list.length + ' (de tu ' + E.ONAME[g.bodies[me][s.cur.si].o.c].toLowerCase() + '): toca el órgano libre que lo recibirá.' : 'Pasa tus virus a órganos libres de otros jugadores.';
+      }
       case 'glove': return 'Todos los demás descartan su mano y pierden su siguiente turno.';
       case 'overtime': return 'Después podrás jugar tus otras dos cartas.';
       case 'apparition': return g.discard.length ? 'Recuperas la última carta del descarte.' : 'No hay cartas en el descarte.';
@@ -1912,6 +2123,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
         const c = ui.sel;
         if (needsNoTarget(c)) bar += '<button class="btn" data-act="playnow"' + (playableNow(c) ? '' : ' disabled') + '>Jugar</button>';
         else if (c.t === 'x' && c.k === 'bodies') bar += '<button class="btn" data-act="dir" data-d="1">↻ Horario</button><button class="btn" data-act="dir" data-d="-1">↺ Antihorario</button>';
+        else if (c.t === 'x' && c.k === 'spread') bar += '<button class="btn alt" data-act="spskip">Dejar este virus</button><button class="btn alt" data-act="spauto">Automático</button>';
         else if (c.t === 'x' && c.k === 'failed') bar += '<button class="btn' + (ui.mode === 'v' ? '' : ' alt') + '" data-act="mode" data-m="v">Como virus</button><button class="btn' + (ui.mode === 'm' ? '' : ' alt') + '" data-act="mode" data-m="m">Como medicina</button>';
         bar += '<button class="btn alt" data-act="cancel">Cancelar</button>';
       } else if (!hand.length || (ex && ex.pass && false)) {
@@ -1981,7 +2193,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
         (suit ? '<div class="askcard">' + Art.svg(suit, { label: 'Traje de protección' }) + '</div>' : '') +
         '<div class="bar wrapbar"><button class="btn" data-act="suit-yes">Usar Traje y robar carta</button><button class="btn alt" data-act="suit-no">Dejar pasar</button></div></div></div>';
     }
-    return '<div class="top"><span class="turn' + (mt ? ' mine' : '') + '">' + topTxt + '<span id="tt"></span></span><span class="topr"><span class="code">SALA ' + esc(g.code) + '</span><button class="menubtn" data-act="menu" aria-label="Menú" aria-expanded="' + ui.menu + '">⋯</button></span></div>' + menuHTML() +
+    return '<div class="top"><span class="turn' + (mt ? ' mine' : '') + '">' + topTxt + '<span id="tt"></span></span><span class="topr"><span class="code">SALA ' + esc(g.code) + '</span>' + voiceBtn() + '<button class="menubtn" data-act="menu" aria-label="Menú" aria-expanded="' + ui.menu + '">⋯</button></span></div>' + menuHTML() +
       '<div class="felt">' +
       '<div class="stage" style="--side:' + (sides ? '92px' : '0px') + '">' +
       '<div class="row-top">' + part(LY.t, 'top') + '</div>' +
@@ -2041,6 +2253,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
   }
 
   // ---------- eventos ----------
+  window.addEventListener('virus-voice', () => { if (g) render(); });
   app.addEventListener('click', e => {
     const t = e.target.closest('[data-act]');
     if (!t) return;
@@ -2058,6 +2271,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
     if (act === 'menu') { ui.menu = !ui.menu; ui.confirm = ''; return render(); }
     if (act === 'menu-reset') { if (ui.confirm === 'reset') return resetToLobby(); ui.confirm = 'reset'; return render(); }
     if (act === 'menu-leave') { if (ui.confirm === 'leave') return leaveGame(); ui.confirm = 'leave'; return render(); }
+    if (act === 'voice') { if (window.VIRUS_VOICE) window.VIRUS_VOICE.toggle(); return; }
     if (act === 'avatar') return setAvatar(t.dataset.a);
     if (act === 'opt') return toggleOpt(t.dataset.k);
     if (act === 'copy') return copyInvite();
@@ -2065,6 +2279,8 @@ if (typeof module !== 'undefined') module.exports = Bot;
     if (act === 'suit-yes') return respond(true);
     if (act === 'suit-no') return respond(false);
     if (act === 'notarget') return noTarget();
+    if (act === 'spskip') { if (canAct() && ui.sel && ui.sel.k === 'spread') spAdvance(null); return; }
+    if (act === 'spauto') { if (canAct() && ui.sel && ui.sel.k === 'spread') play({}); return; }
     if (act === 'card') {
       if (!canAct()) return;
       const id = +t.dataset.i;
@@ -2100,6 +2316,21 @@ if (typeof module !== 'undefined') module.exports = Bot;
   init();
 })();
 
+</script>
+<button class="installpill" id="installpill" type="button">📲 Instalar app</button>
+<script>
+(function () {
+  var standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone;
+  if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !/[?&]nosw/.test(location.search)) {
+    window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () { }); });
+  }
+  var pill = document.getElementById('installpill'), evt = null;
+  window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); evt = e; refresh(); });
+  window.addEventListener('appinstalled', function () { evt = null; refresh(); });
+  function refresh() { pill.classList.toggle('show', !!evt && !standalone && !document.querySelector('.top, .room-code')); }
+  setInterval(refresh, 800);
+  pill.addEventListener('click', function () { if (!evt) return; var e = evt; evt = null; refresh(); e.prompt(); });
+})();
 </script>
 </body>
 </html>
