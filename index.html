@@ -6,6 +6,7 @@
 <title>Virus!</title>
 <meta name="description" content="Virus! el juego de cartas, en línea y sin cuentas">
 <meta name="theme-color" content="#0F473A">
+<script>window.VIRUS_BUILD='25-oct 13:56';</script>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -269,6 +270,50 @@ details.log div { padding: 2px 0; }
 .fx-cap b { font-weight: 700; }
 .fx-cap span { display: block; font-size: 12px; opacity: .85; }
 
+/* ---- versión y actualización ---- */
+.ver { text-align: center; margin: 10px 14px; }
+.linkbtn { border: 0; background: none; color: var(--accent); font: inherit; font-weight: 700; text-decoration: underline; padding: 0; cursor: pointer; }
+#updbar { position: fixed; left: 0; right: 0; top: env(safe-area-inset-top, 0px); z-index: 60; display: none; align-items: center; justify-content: center; gap: 10px; background: var(--accent); color: var(--accent-ink); padding: 8px 12px; font-size: 13px; font-weight: 600; }
+#updbar.show { display: flex; }
+#updbar button { border: 0; border-radius: 8px; padding: 6px 12px; font: inherit; font-weight: 700; background: #fff; color: #12212C; }
+
+/* ---- marcador ---- */
+.score { display: flex; flex-direction: column; gap: 6px; }
+.srow { display: flex; align-items: center; gap: 10px; }
+.srow .snm { flex: 1; font-weight: 600; }
+.srow b { font-size: 18px; min-width: 24px; text-align: right; }
+.sav { font-size: 20px; }
+.scoreline { text-align: center; margin: 4px 0 10px; }
+
+/* ---- reacciones ---- */
+.rbtn { width: 38px; font-size: 17px; padding: 0 0 2px; }
+.rbtn.on { background: var(--accent); border-color: var(--accent); }
+.reacttray { position: fixed; z-index: 35; right: 8px; top: calc(54px + env(safe-area-inset-top, 0px)); display: flex; gap: 4px; padding: 6px; background: rgba(10, 24, 28, .94); border-radius: 14px; box-shadow: 0 8px 22px rgba(0, 0, 0, .4); }
+.reacttray button { font-size: 24px; width: 42px; height: 42px; border: 0; border-radius: 10px; background: rgba(255, 255, 255, .08); line-height: 1; }
+.reacttray button:active { background: rgba(255, 255, 255, .22); }
+.rfx { position: fixed; z-index: 45; pointer-events: none; display: flex; flex-direction: column; align-items: center; width: 48px; }
+.rfx span { font-size: 38px; line-height: 1; filter: drop-shadow(0 4px 6px rgba(0, 0, 0, .45)); }
+.rfx small { font-size: 11px; font-weight: 700; color: #fff; background: rgba(8, 20, 24, .78); border-radius: 8px; padding: 1px 6px; margin-top: 2px; white-space: nowrap; }
+
+/* ---- ayuda de cartas ---- */
+.hand .card, .hand button { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: manipulation; }
+.helpbox { display: flex; gap: 14px; align-items: flex-start; max-width: 340px; }
+.helpcard { width: 96px; flex: none; filter: drop-shadow(0 8px 12px rgba(0, 0, 0, .35)); }
+.helpcard svg { display: block; width: 100%; height: auto; }
+.helptxt h3 { margin: 0 0 6px; font-size: 16px; }
+.helptxt p { margin: 0 0 10px; font-size: 13.5px; line-height: 1.4; }
+
+/* ---- historial ---- */
+.loglink { margin-top: 4px; border: 0; background: rgba(255, 255, 255, .1); color: inherit; border-radius: 999px; padding: 4px 12px; font: inherit; font-size: 12px; font-weight: 600; }
+.histbox { width: min(92vw, 420px); max-height: 78vh; display: flex; flex-direction: column; padding: 14px; }
+.histhead { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.histhead h3 { margin: 0; }
+.histlist { list-style: none; margin: 0; padding: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.histlist li { display: flex; gap: 8px; font-size: 13.5px; line-height: 1.35; padding: 5px 4px; border-bottom: 1px solid var(--line); }
+.histlist li:first-child { background: rgba(31, 138, 112, .12); border-radius: 8px; }
+.hav { flex: none; width: 22px; text-align: center; }
+.helpov, .histov { z-index: 50; }
+
 </style>
 </head>
 <body>
@@ -320,7 +365,9 @@ details.log div { padding: 2px 0; }
   let myId = store.get('virus.uid');
   if (!myId) { myId = 'g_' + Math.random().toString(36).slice(2, 10); store.set('virus.uid', myId); }
 
-  const N = { role: null, code: null, peer: null, conns: {}, conn: null, doc: null, subs: [], retry: null, leaving: false, status: 'ok' };
+  const N = { role: null, code: null, peer: null, conns: {}, conn: null, doc: null, subs: [], retry: null, leaving: false, status: 'ok', lostAt: 0, claiming: false, nextClaim: 0, lastMsg: 0 };
+  const GRACE = (+Q.get('gr')) || 3000, RANKSTEP = Math.max(500, Math.round(GRACE * 0.7)); // cuánto esperar antes de tomar el control de la sala (gr= solo para pruebas)
+  const HB = (+Q.get('hb')) || 2000; // latido del anfitrión: si en 4 latidos no llega nada, se da por perdido (hb= solo para pruebas)
 
   const snap = () => ({ exists: N.doc != null, data: () => N.doc == null ? undefined : clone(N.doc) });
   function notify() { const s = snap(); N.subs.slice().forEach(f => { try { f(s); } catch (e) { console.error(e); } }); }
@@ -450,7 +497,7 @@ details.log div { padding: 2px 0; }
     N.conns = {};
     try { if (N.conn) N.conn.close(); } catch (e) { }
     try { if (N.peer) N.peer.destroy(); } catch (e) { }
-    N.peer = null; N.conn = null; N.role = null; N.code = null; N.leaving = false;
+    N.peer = null; N.conn = null; N.role = null; N.code = null; N.leaving = false; N.lostAt = 0; N.claiming = false; N.nextClaim = 0;
     setStatus('ok');
   }
 
@@ -469,9 +516,30 @@ details.log div { padding: 2px 0; }
       if (!N.doc) return false;
       merge(N.doc, payload);
     } else if (kind === 'delete') { N.doc = null; }
+    if (N.doc && kind !== 'delete') N.doc.hp = myId; // hp: quién tiene la sala abierta en su navegador (el anfitrión técnico)
     saveHost(); broadcast(); notify();
     if (kind === 'delete') { store.del('virus.host'); setTimeout(closeAll, 400); }
     return true;
+  }
+
+  // Atiende a los jugadores que se conectan a esta sala (lo usa quien abre la sala y quien la toma después)
+  function wireHost(peer) {
+    wirePeer(peer);
+    peer.on('disconnected', () => { setTimeout(() => { try { if (N.peer === peer && !peer.destroyed) peer.reconnect(); } catch (e) { } }, 1500); });
+    peer.on('error', err => { if (peer.__open && N.peer === peer && err.type === 'unavailable-id') stepDown(); }); // otro jugador tomó la sala mientras yo estaba sin conexión
+    peer.on('connection', conn => {
+      conn.on('open', () => { N.conns[conn.peer] = conn; try { conn.send({ t: 'state', doc: N.doc }); } catch (e) { } sendPeers(); });
+      conn.on('data', m => {
+        if (!m || typeof m !== 'object') return;
+        if (m.t === 'hello') { try { conn.send({ t: 'state', doc: N.doc }); } catch (e) { } }
+        else if (m.t === 'set' || m.t === 'update') {
+          const ok = hostWrite(m.t, m.t === 'set' ? m.doc : m.patch);
+          if (!ok) { try { conn.send({ t: 'state', doc: N.doc }); } catch (e) { } }
+        }
+      });
+      const gone = () => { if (N.conns[conn.peer] === conn) { delete N.conns[conn.peer]; sendPeers(); } };
+      conn.on('close', gone); conn.on('error', gone);
+    });
   }
 
   function becomeHost(code, doc) {
@@ -480,27 +548,79 @@ details.log div { padding: 2px 0; }
       let opened = false;
       const peer = new Peer('virus-' + code, peerOpts());
       N.peer = peer; N.role = 'host'; N.code = code; N.doc = doc; N.conns = {};
-      wirePeer(peer);
-      peer.on('open', () => { opened = true; saveHost(); V.peers = hostPeerList(); res(); });
+      wireHost(peer);
+      peer.on('open', () => { opened = true; peer.__open = true; if (N.doc) N.doc.hp = myId; saveHost(); V.peers = hostPeerList(); res(); });
       peer.on('error', err => {
         if (!opened) { closeAll(); rej(new Error(err.type === 'unavailable-id' ? 'code-in-use' : (err.type || 'peer-error'))); }
       });
-      peer.on('disconnected', () => { setTimeout(() => { try { if (N.peer === peer && !peer.destroyed) peer.reconnect(); } catch (e) { } }, 1500); });
-      peer.on('connection', conn => {
-        conn.on('open', () => { N.conns[conn.peer] = conn; try { conn.send({ t: 'state', doc: N.doc }); } catch (e) { } sendPeers(); });
-        conn.on('data', m => {
-          if (!m || typeof m !== 'object') return;
-          if (m.t === 'hello') { try { conn.send({ t: 'state', doc: N.doc }); } catch (e) { } }
-          else if (m.t === 'set' || m.t === 'update') {
-            const ok = hostWrite(m.t, m.t === 'set' ? m.doc : m.patch);
-            if (!ok) { try { conn.send({ t: 'state', doc: N.doc }); } catch (e) { } }
-          }
-        });
-        const gone = () => { if (N.conns[conn.peer] === conn) { delete N.conns[conn.peer]; sendPeers(); } };
-        conn.on('close', gone); conn.on('error', gone);
-      });
     });
   }
+
+  // ---------- traspaso de anfitrión ----------
+  // Los invitados tienen una copia de la partida. Si el anfitrión se va o se cae, el siguiente jugador (por turno de lista) abre la sala con el mismo código.
+  function successors(doc) {
+    if (!doc || !doc.players) return [];
+    const ids = (doc.status === 'playing' && Array.isArray(doc.order) ? doc.order : Object.keys(doc.players)).filter(u => doc.players[u] && !doc.players[u].bot && u !== doc.hp);
+    const key = (u, i) => [(u === doc.host && doc.host !== doc.hp) ? 0 : 1, (doc.idle && doc.idle[u] >= 2) ? 1 : 0, i];
+    return ids.map((u, i) => ({ u, k: key(u, i) })).sort((x, y) => x.k[0] - y.k[0] || x.k[1] - y.k[1] || x.k[2] - y.k[2]).map(x => x.u);
+  }
+  function claimHost(code) {
+    if (N.claiming || N.role !== 'guest' || N.code !== code || !N.doc) return;
+    N.claiming = true;
+    let opened = false;
+    const doc = clone(N.doc);
+    const peer = new Peer('virus-' + code, peerOpts());
+    const fail = () => { N.claiming = false; N.nextClaim = Date.now() + 2500; try { peer.destroy(); } catch (e) { } };
+    peer.on('error', () => { if (!opened) fail(); });
+    peer.on('open', () => {
+      opened = true;
+      if (N.role !== 'guest' || N.code !== code || N.status === 'ok') { fail(); return; } // el anfitrión original (u otro) ya volvió
+      promote(peer, code, doc);
+    });
+  }
+  function promote(peer, code, doc) {
+    if (N.retry) { clearTimeout(N.retry); N.retry = null; }
+    const oldConn = N.conn, oldPeer = N.peer;
+    N.conn = null; N.leaving = true;
+    try { if (oldConn) oldConn.close(); } catch (e) { }
+    try { if (oldPeer && oldPeer !== peer) oldPeer.destroy(); } catch (e) { }
+    N.leaving = false;
+    const prev = doc.hp;
+    peer.__open = true;
+    N.peer = peer; N.role = 'host'; N.code = code; N.conns = {}; N.claiming = false; N.lostAt = 0;
+    doc.host = myId; doc.hp = myId; delete doc.handoff;
+    if (doc.status === 'playing') {
+      doc.idle = doc.idle || {}; if (prev && prev !== myId) doc.idle[prev] = Math.max(2, doc.idle[prev] || 0);
+      doc.seq = (doc.seq || 0) + 1;
+    }
+    doc.log = (doc.log || []).concat([(doc.players[myId] ? doc.players[myId].name : 'Alguien') + ' sigue como anfitrión de la sala']);
+    N.doc = doc;
+    wireHost(peer);
+    setStatus('ok'); V.peers = hostPeerList(); saveHost(); notify();
+  }
+  function stepDown() {
+    const code = N.code; store.del('virus.host');
+    connectGuest(code).then(ok => { if (!ok) setStatus('reconnecting'); });
+  }
+  function takeTick() {
+    if (N.role !== 'guest' || !N.code || N.status !== 'reconnecting' || !N.lostAt || N.claiming || !N.doc || !N.doc.players) return;
+    if (Date.now() < N.nextClaim) return;
+    const rank = successors(N.doc).indexOf(myId);
+    if (rank < 0) return;
+    const grace = N.doc.handoff ? 600 : GRACE;
+    if (Date.now() - N.lostAt >= grace + rank * RANKSTEP) claimHost(N.code);
+  }
+  setInterval(takeTick, 700);
+  // Latido: el anfitrión avisa que sigue ahí; si un invitado no oye nada por un rato, la conexión se da por caída
+  // (cuando alguien se apaga de golpe el navegador tarda ~30 s en notarlo por sí solo)
+  setInterval(() => {
+    if (N.role === 'host') Object.keys(N.conns).forEach(k => { const c = N.conns[k]; if (c.open) { try { c.send({ t: 'ping' }); } catch (e) { } } });
+    else if (N.role === 'guest' && N.conn && N.conn.open && N.lastMsg && Date.now() - N.lastMsg > HB * 4) {
+      const c = N.conn; N.lostAt = N.lostAt || Date.now(); setStatus('reconnecting');
+      try { c.close(); } catch (e) { }
+      scheduleRetry(N.code);
+    }
+  }, HB);
 
   // ---------- invitado ----------
   function connectGuest(code) {
@@ -520,12 +640,13 @@ details.log div { padding: 2px 0; }
   function attach(peer, code, finish) {
     const conn = peer.connect('virus-' + code, { reliable: true, serialization: 'json' });
     N.conn = conn;
-    conn.on('open', () => { try { conn.send({ t: 'hello' }); } catch (e) { } });
+    conn.on('open', () => { N.lastMsg = Date.now(); try { conn.send({ t: 'hello' }); } catch (e) { } });
     conn.on('data', m => {
-      if (m && m.t === 'state') { N.doc = m.doc; setStatus('ok'); if (finish) finish(true); notify(); }
+      N.lastMsg = Date.now();
+      if (m && m.t === 'state') { N.doc = m.doc; N.lostAt = 0; setStatus('ok'); if (finish) finish(true); notify(); }
       else if (m && m.t === 'peers' && Array.isArray(m.ids)) { V.peers = m.ids.filter(x => typeof x === 'string'); ensureCalls(); }
     });
-    const lost = () => { if (N.conn !== conn || N.leaving) return; setStatus('reconnecting'); scheduleRetry(code); };
+    const lost = () => { if (N.conn !== conn || N.leaving) return; if (!N.lostAt) N.lostAt = Date.now(); setStatus('reconnecting'); scheduleRetry(code); };
     conn.on('close', lost); conn.on('error', lost);
   }
   function scheduleRetry(code) {
@@ -557,6 +678,7 @@ details.log div { padding: 2px 0; }
           }
           const ok = await connectGuest(code);
           if (!ok) { closeAll(); N.doc = null; return snap(); }
+          if (saved && saved.code === code && N.doc && N.doc.host !== myId) store.del('virus.host'); // la sala ya la lleva otro
           return snap();
         },
         async set(d) {
@@ -592,6 +714,7 @@ details.log div { padding: 2px 0; }
   const tms = +Q.get('tms');
   if (tms > 0) { window.VIRUS_TURN_MS = tms; window.VIRUS_ABSENT_MS = Math.round(tms * 0.4); window.VIRUS_PEND_MS = tms; window.VIRUS_STAGGER_MS = 600; }
   window.VIRUS_P2P = true;
+  window.VIRUS_NET = { role: () => N.role, hp: () => (N.doc && N.doc.hp) || null, close: () => closeAll(), uid: myId, doc: () => N.doc, status: () => N.status, dbg: () => ({ lostAt: N.lostAt, claiming: N.claiming, nextClaim: N.nextClaim, status: N.status, role: N.role, hasDoc: !!N.doc, rank: successors(N.doc).indexOf(myId), succ: successors(N.doc), hp: N.doc && N.doc.hp, host: N.doc && N.doc.host, connOpen: !!(N.conn && N.conn.open), retry: !!N.retry }) };
   window.VIRUS_SHARE_URL = location.protocol === 'file:' ? '' : location.href.split('#')[0].split('?')[0];
   window.__netState = 'ok';
   window.claude = { use: async n => n === 'db' ? DB : n === 'user' ? { id: async () => myId } : null };
@@ -677,7 +800,7 @@ const Engine = (function () {
       code: g0.code, host: g0.host, players: g0.players, opts,
       status: 'playing', order, deck: shuffle(buildDeck(opts)), discard: [], quarantine: [],
       hands: {}, bodies: {}, skip: {}, idle: {}, turn: 0, winner: null, curse: null, extra: null, pending: null, redirect: null,
-      log: ['Empieza la partida'], seq: 0
+      log: ['Empieza la partida'], seq: 0, score: g0.score || {}
     };
     order.forEach(u => { g.hands[u] = []; g.bodies[u] = []; });
     for (let k = 0; k < 3; k++) order.forEach(u => g.hands[u].push(g.deck.pop()));
@@ -1032,6 +1155,7 @@ const Engine = (function () {
     const w = [u].concat(g.order.filter(x => x !== u)).find(x => canWin(g, x));
     if (!w) return false;
     g.status = 'ended'; g.winner = w; g.extra = null; g.pending = null; g.redirect = null;
+    g.score = g.score || {}; g.score[w] = (g.score[w] || 0) + 1; // marcador de la noche
     g.log.push(g.players[w].name + ' completa un cuerpo sano y gana');
     return true;
   }
@@ -1042,15 +1166,15 @@ const Engine = (function () {
       draw(g, u);
       if (!checkWin(g, u)) endTurn(g);
     }
-    g.seq++; g.log = g.log.slice(-40);
+    g.seq++; g.log = g.log.slice(-120);
     return { g };
   }
   // Tras jugar una carta: ¿sigue el turno (fase extra) o termina?
   function proceed(g, u, start) {
-    if (checkWin(g, u)) { g.seq++; g.log = g.log.slice(-40); return { g }; }
+    if (checkWin(g, u)) { g.seq++; g.log = g.log.slice(-120); return { g }; }
     if (start) {
       if (start.n <= 0 || !g.hands[u].length) return finish(g, u);
-      g.extra = start; g.seq++; g.log = g.log.slice(-40); return { g };
+      g.extra = start; g.seq++; g.log = g.log.slice(-120); return { g };
     }
     if (g.extra && g.extra.u === u) {
       g.extra.n--;
@@ -1756,21 +1880,44 @@ if (typeof module !== 'undefined') module.exports = Bot;
         const rest = Object.assign({}, cur.players); delete rest[me];
         const ids = Object.keys(rest);
         const humans = ids.filter(u => !(rest[u] && rest[u].bot));
-        if (!humans.length || (P2P && cur.host === me)) await r.delete();
-        else await r.set({ code: cur.code, host: cur.host === me ? humans[0] : cur.host, status: 'lobby', players: rest, opts: cur.opts || {} });
+        if (!humans.length) await r.delete();
+        else if (P2P && cur.host === me) { const d = lobbyDoc(cur, rest, humans[0]); d.handoff = true; await r.set(d); await sleepMs(450); closeNet(); }
+        else await r.set(lobbyDoc(cur, rest, cur.host === me ? humans[0] : cur.host));
+      } else if (r && cur && cur.status === 'ended' && P2P && cur.host === me) { // partida terminada: otro jugador sigue como anfitrión o se cierra la sala
+        const heir = heirOf(cur);
+        if (heir) { await r.update({ host: heir, handoff: true }); await sleepMs(450); closeNet(); } else await r.delete();
       }
     } catch (e) { }
     render();
   }
 
   // Salir a media partida: quedas como ausente y la partida sigue sin ti
+  const sleepMs = ms => new Promise(r => setTimeout(r, ms));
+  const closeNet = () => { try { if (window.VIRUS_NET) window.VIRUS_NET.close(); } catch (e) { } };
+  // Documento de sala de espera (conserva el marcador de la noche)
+  const lobbyDoc = (d, players, host) => ({ code: d.code, host: host || d.host, status: 'lobby', players: players || d.players, opts: d.opts || {}, score: d.score || {} });
+  // Quién puede seguir como anfitrión si yo me voy: otro jugador humano (de preferencia uno activo)
+  function heirOf(d) {
+    const ids = (d.status === 'playing' && Array.isArray(d.order) ? d.order : Object.keys(d.players || {})).filter(u => u !== me && d.players[u] && !d.players[u].bot);
+    const act = ids.filter(u => !(d.idle && d.idle[u] >= 2));
+    return act[0] || ids[0] || null;
+  }
+  async function closeRoom() { // el anfitrión cierra la sala para todos
+    const r = ref;
+    ui.menu = false; ui.confirm = '';
+    try { if (r) await r.delete(); } catch (e) { }
+    return leave();
+  }
   async function leaveGame() {
     const r = ref, cur = g;
     ui.menu = false; ui.confirm = '';
     try {
       if (r && cur && cur.status === 'playing') {
-        if (P2P && cur.host === me) await r.delete(); // en la versión directa la partida vive en el navegador del anfitrión
-        else await r.update({ idle: { [me]: 2 }, seq: (cur.seq || 0) + 1 });
+        if (P2P && cur.host === me) { // en la versión directa la partida vive en el navegador del anfitrión: otro jugador la toma
+          const heir = heirOf(cur);
+          if (heir) { await r.update({ idle: { [me]: 2 }, host: heir, handoff: true, seq: (cur.seq || 0) + 1 }); await sleepMs(450); closeNet(); }
+          else await r.delete();
+        } else await r.update({ idle: { [me]: 2 }, seq: (cur.seq || 0) + 1 });
       }
     } catch (e) { }
     return leave();
@@ -1780,7 +1927,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
     if (!g || g.host !== me || busy) return;
     ui.menu = false; ui.confirm = '';
     busy = true;
-    try { await ref.set({ code: g.code, host: g.host, status: 'lobby', players: g.players, opts: g.opts || {} }); }
+    try { await ref.set(lobbyDoc(g)); }
     catch (e) { ui.err = 'No se pudo reiniciar la sala.'; }
     busy = false; render();
   }
@@ -1826,7 +1973,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
     if (busy || !g || g.host !== me || g.status !== 'lobby' || !g.players[id] || id === g.host) return;
     const rest = Object.assign({}, g.players); delete rest[id];
     busy = true;
-    ref.set({ code: g.code, host: g.host, status: 'lobby', players: rest, opts: g.opts || {} })
+    ref.set(lobbyDoc(g, rest))
       .catch(() => { ui.err = 'No se pudo quitar al jugador.'; }).then(() => { busy = false; render(); });
   }
   function toggleOpt(k) {
@@ -1842,7 +1989,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
   function again() {
     if (busy || !g || g.host !== me) return;
     busy = true;
-    ref.set({ code: g.code, host: g.host, status: 'lobby', players: g.players, opts: g.opts || {} })
+    ref.set(lobbyDoc(g))
       .catch(() => { ui.err = 'No se pudo reiniciar la sala.'; }).then(() => { busy = false; render(); });
   }
 
@@ -2095,6 +2242,13 @@ if (typeof module !== 'undefined') module.exports = Bot;
   }
 
   // ---------- vistas ----------
+  // Versión instalada y botón para forzar la actualización (solo en la versión de GitHub/teléfono)
+  const verBox = () => window.VIRUS_BUILD ? '<p class="note ver">Versión ' + esc(window.VIRUS_BUILD) + ' · ¿No ves los cambios nuevos? <button class="linkbtn" data-act="refreshapp">Actualizar app</button></p>' : '';
+  async function hardRefresh() {
+    try { const rs = await navigator.serviceWorker.getRegistrations(); await Promise.all(rs.map(r => r.unregister())); } catch (e) { }
+    try { const ks = await caches.keys(); await Promise.all(ks.map(k => caches.delete(k))); } catch (e) { }
+    location.replace(location.href.split('#')[0].split('?')[0] + '?v=' + Date.now() + location.hash);
+  }
   const voiceErr = () => { const V = window.VIRUS_VOICE; return V && V.err() ? '<div class="netbar vbar">' + esc(V.err()) + '</div>' : ''; };
   const netBanner = () => ((P2P && window.__netState === 'reconnecting') ? '<div class="netbar">Reconectando con el anfitrión…</div>' : '') + voiceErr();
   const voiceBtn = () => {
@@ -2190,7 +2344,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
       '<div class="note" style="text-align:center">o entra a una sala</div>' +
       '<div class="row"><input id="cd" class="code-in" type="text" maxlength="4" autocomplete="off" placeholder="CÓDIGO" value="' + esc(ui.code) + '">' +
       '<button class="btn alt" data-act="join"' + (db ? '' : ' disabled') + '>Entrar</button></div>' +
-      (ui.err ? '<p class="err">' + esc(ui.err) + '</p>' : '') + note + '</div>' + rulesHTML();
+      (ui.err ? '<p class="err">' + esc(ui.err) + '</p>' : '') + note + '</div>' + verBox() + rulesHTML();
   }
 
   const OPTS = [
@@ -2221,13 +2375,15 @@ if (typeof module !== 'undefined') module.exports = Bot;
       '<div class="card-box"><h3>Jugadores (' + ids.length + ')</h3><ul class="plist">' + list + '</ul>' +
       (host ? '<div class="bar"><button class="btn alt" data-act="addbot"' + (ids.length >= 6 ? ' disabled' : '') + '>Agregar bot</button></div>' +
         '<p class="note" style="margin:8px 0 0">' + (P2P ? 'Tu navegador es el anfitrión: no cierres esta página mientras juegan (si la cierras, al reabrirla la partida continúa).' : 'Los bots juegan desde tu navegador: deja esta página abierta mientras juegan.') + '</p>' : '') + '</div>' +
+      scoreBox() +
       voiceBox() +
+      '<div class="card-box"><h3>Avisos</h3><div class="stack">' + alertsRow() + '</div></div>' +
       '<div class="card-box"><h3>Tu avatar</h3><div class="avgrid">' + picker + '</div></div>' +
       '<div class="card-box"><h3>Cartas y modos</h3><p class="note" style="margin:0 0 8px">' + (host ? 'Elige qué se juega.' : 'Las elige el anfitrión.') + '</p><div class="opts">' + opts + '</div></div>' +
       '<div class="card-box">' + (ui.err ? '<p class="err" style="margin-top:0">' + esc(ui.err) + '</p>' : '') + '<div class="bar">' +
       (host ? '<button class="btn" data-act="start"' + (ids.length < 2 ? ' disabled' : '') + '>' + (ids.length < 2 ? 'Faltan jugadores' : 'Empezar partida') + '</button>'
         : '<button class="btn alt" disabled>Esperando al anfitrión</button>') +
-      '<button class="btn alt" data-act="leave">Salir</button></div></div>' + rulesHTML();
+      '<button class="btn alt" data-act="leave">Salir</button></div></div>' + verBox() + rulesHTML();
   }
 
   function hintText() {
@@ -2342,16 +2498,159 @@ if (typeof module !== 'undefined') module.exports = Bot;
     return who + ' te ataca.';
   }
 
+
+  // ---------- marcador de la noche ----------
+  function scoreRows() {
+    const sc = g.score || {};
+    return Object.keys(g.players).map(u => ({ u, n: sc[u] || 0 })).sort((x, y) => y.n - x.n);
+  }
+  function scoreBox() {
+    const rows = scoreRows();
+    if (!rows.some(r => r.n > 0)) return '';
+    return '<div class="card-box"><h3>🏆 Marcador de la noche</h3><div class="score">' + rows.map(r =>
+      '<div class="srow"><span class="sav">' + esc(g.players[r.u].av || '') + '</span><span class="snm">' + esc(g.players[r.u].name) + (r.u === me ? ' (tú)' : '') + '</span><b>' + r.n + '</b></div>').join('') + '</div></div>';
+  }
+  const scoreLine = () => { const r = scoreRows().filter(x => x.n > 0); return r.length ? '<p class="note scoreline">🏆 ' + r.map(x => esc(shortName(x.u)) + ' ' + x.n).join(' · ') + '</p>' : ''; };
+
+  // ---------- reacciones rápidas ----------
+  const REACTS = ['😂', '👏', '😱', '😈', '🤝', '🔥'];
+  const reactBtn = () => '<button class="menubtn rbtn' + (ui.react ? ' on' : '') + '" data-act="react" aria-label="Reacciones" aria-expanded="' + !!ui.react + '">😀</button>';
+  const reactTray = () => ui.react ? '<div class="reacttray">' + REACTS.map(e => '<button data-act="sendreact" data-e="' + e + '" aria-label="Enviar ' + e + '">' + e + '</button>').join('') + '</div>' : '';
+  let reactSeen = null, reactLast = 0;
+  async function sendReact(e) {
+    if (!ref || !g || REACTS.indexOf(e) < 0) return;
+    const now = Date.now(); ui.react = false;
+    if (now - reactLast < 1200) return render();
+    reactLast = now; render();
+    try { await ref.update({ react: { id: me + ':' + now, u: me, e } }); } catch (err) { }
+  }
+  function reactDetect() {
+    if (!g || g.status === 'lobby') { reactSeen = null; return; }
+    const R = g.react;
+    if (reactSeen === null) { reactSeen = R && R.id ? [R.id] : []; return; } // no repetir lo anterior al entrar a la partida
+    if (!R || !R.id || reactSeen.indexOf(R.id) >= 0) return;
+    reactSeen.push(R.id); if (reactSeen.length > 30) reactSeen.shift();
+    if (typeof document.body.animate !== 'function' || document.hidden) return;
+    const seat = document.querySelector('[data-seat="' + R.u + '"]'); if (!seat) return;
+    const r = seat.getBoundingClientRect(), el = document.createElement('div');
+    el.className = 'rfx'; el.setAttribute('aria-hidden', 'true');
+    el.innerHTML = '<span>' + esc(R.e) + '</span><small>' + esc(shortName(R.u)) + '</small>';
+    el.style.left = Math.max(8, Math.min(innerWidth - 60, r.left + r.width / 2 - 24)) + 'px'; el.style.top = Math.max(60, r.top - 6) + 'px';
+    document.body.appendChild(el);
+    const an = el.animate([{ opacity: 0, transform: 'translateY(8px) scale(.5)' }, { opacity: 1, transform: 'translateY(-14px) scale(1.15)', offset: .18 }, { opacity: 1, transform: 'translateY(-46px) scale(1)', offset: .7 }, { opacity: 0, transform: 'translateY(-84px) scale(.95)' }], { duration: 2300, easing: 'ease-out' });
+    an.onfinish = () => { if (el.parentNode) el.parentNode.removeChild(el); };
+  }
+
+  // ---------- avisos de turno (vibración, sonido, título y notificación) ----------
+  const alertsOn = () => store.get('virus.alerts') !== '0';
+  const TITLE0 = document.title;
+  let alertKey = null, titleTimer = null, actx = null;
+  function beep() {
+    try {
+      actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+      if (actx.state === 'suspended') actx.resume();
+      [[880, 0], [1175, .13]].forEach(f => { const o = actx.createOscillator(), gn = actx.createGain(); o.type = 'sine'; o.frequency.value = f[0]; o.connect(gn); gn.connect(actx.destination);
+        const t = actx.currentTime + f[1]; gn.gain.setValueAtTime(0.0001, t); gn.gain.exponentialRampToValueAtTime(0.18, t + .02); gn.gain.exponentialRampToValueAtTime(0.0001, t + .16); o.start(t); o.stop(t + .18); });
+    } catch (e) { }
+  }
+  function stopTitle() { if (titleTimer) { clearInterval(titleTimer); titleTimer = null; } document.title = TITLE0; }
+  function turnAlert(msg) {
+    if (!alertsOn()) return;
+    try { if (navigator.vibrate && (!navigator.userActivation || navigator.userActivation.hasBeenActive)) navigator.vibrate([180, 90, 180]); } catch (e) { }
+    beep();
+    if (document.hidden) {
+      if (!titleTimer) { let on = false; titleTimer = setInterval(() => { on = !on; document.title = on ? '🔔 ' + msg : TITLE0; }, 900); }
+      try {
+        if (P2P && window.Notification && Notification.permission === 'granted' && navigator.serviceWorker) {
+          navigator.serviceWorker.getRegistration().then(r => { if (r) r.showNotification(msg, { body: 'Virus! · sala ' + g.code, tag: 'virus-turn', renotify: true, icon: 'icon-192.png', badge: 'icon-192.png', vibrate: [200, 100, 200] }); });
+        }
+      } catch (e) { }
+    }
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) stopTitle(); });
+  function alertDetect() {
+    if (!g || g.status !== 'playing') { alertKey = null; stopTitle(); return; }
+    const key = iDefend() ? 'd:' + g.seq : (myTurn() ? 't:' + g.seq + ':' + g.turn : '');
+    if (alertKey === null) { alertKey = key; return; } // al entrar a la partida no se avisa por lo que ya estaba
+    if (key === alertKey) return;
+    const prevMine = alertKey !== '';
+    alertKey = key;
+    if (!key) { stopTitle(); return; }
+    // dentro de un mismo turno propio (varias jugadas seguidas, horas extra...) no se repite el aviso
+    if (key[0] === 't' && prevMine && alertKey.split(':')[2] === String(g.turn) && g.extra) return;
+    turnAlert(key[0] === 'd' ? '¡Te atacan!' : '¡Es tu turno!');
+  }
+  const alertsRow = () => '<button class="btn alt" data-act="alerts">' + (alertsOn() ? '🔔 Avisos de turno: activados' : '🔕 Avisos de turno: apagados') + '</button>' +
+    (P2P && window.Notification && alertsOn() ? (Notification.permission === 'granted' ? '<p class="note">Notificaciones activadas: te avisan aunque tengas el juego minimizado (mientras el teléfono mantenga la app abierta).</p>' : Notification.permission === 'denied' ? '' : '<button class="btn alt" data-act="notifperm">Permitir notificaciones (para cuando minimices el juego)</button>') : '');
+  async function askNotif() { try { await Notification.requestPermission(); } catch (e) { } render(); }
+
+  // ---------- ayuda de cartas (mantener presionada) ----------
+  function cardHelp(c) {
+    const col = c.c && E.ONAME[c.c] ? E.ONAME[c.c].toLowerCase() : '';
+    if (c.t === 'o') {
+      if (c.c === 'wild') return 'Cuenta como cualquier color. Cuando recibe un virus o una medicina de un color, se convierte en ese órgano y su dueño ya no puede tener otro de ese color. Si lo destruyen, la carta vuelve a ser multicolor.';
+      if (c.c === 'bionic') return 'Órgano extra (es el 5.º órgano del duelo). Ningún virus ni medicina le afecta; solo las cartas de tratamiento.';
+      if (c.c === 'mutant') return 'Si ya tienes órganos, reemplaza uno de los tuyos (el anterior se descarta). Solo los virus y medicinas multicolor lo afectan.';
+      return 'Ponlo en tu cuerpo. Gana quien junte 4 órganos sanos de colores distintos. No puedes tener dos órganos del mismo color.';
+    }
+    if (c.t === 'v') {
+      if (c.ev) return 'Virus evolucionado' + (c.c === 'wild' ? ' multicolor' : ' (' + col + ')') + ': infecta un órgano libre rival' + (c.c === 'wild' ? ' de cualquier color' : ' de su color (o multicolor)') + '. Además quita cualquier vacuna, incluso las experimentales, y solo lo cura una medicina experimental. Dos virus (de cualquier tipo) destruyen el órgano.';
+      return 'Virus' + (c.c === 'wild' ? ' multicolor' : ' ' + col) + ': ponlo en un órgano libre de otro jugador' + (c.c === 'wild' ? ' de cualquier color' : ' de su color (o multicolor)') + ' para infectarlo. Un segundo virus lo destruye; sobre una vacuna, la quita. No afecta a órganos inmunizados ni quita vacunas experimentales.';
+    }
+    if (c.t === 'm') {
+      if (c.ex) return 'Medicina experimental' + (c.c === 'wild' ? ' multicolor' : ' (' + col + ')') + ': cura virus normales y evolucionados, o vacuna un órgano. Hacen falta 2 medicinas (de cualquier tipo) para inmunizarlo. Un virus normal no puede quitarla.';
+      return 'Medicina' + (c.c === 'wild' ? ' multicolor' : ' ' + col) + ': ponla en uno de tus órganos' + (c.c === 'wild' ? '' : ' de su color') + ': cura un virus normal, o vacuna un órgano libre. Con 2 medicinas queda inmunizado y ya nadie lo toca. No cura virus evolucionados.';
+    }
+    switch (c.k) {
+      case 'swap': return 'Cambias uno de tus órganos por uno de otro jugador, en cualquier estado (infectado, vacunado o inmunizado). No pueden quedar dos del mismo color en un cuerpo.';
+      case 'steal': return 'Robas un órgano de otro jugador (que no esté inmunizado) y lo pones en tu cuerpo. No puedes quedarte con dos del mismo color.';
+      case 'spread': return 'Pasas TODOS tus virus que puedas a órganos libres (sin virus ni vacunas) de otros jugadores. Tú eliges adónde va cada uno; el que no pueda pasar se queda contigo.';
+      case 'glove': return 'Todos los demás jugadores descartan su mano completa y pierden su siguiente turno de juego.';
+      case 'error': return 'Cambias todo tu cuerpo por el de otro jugador (órganos, virus y vacunas).';
+      case 'overtime': return 'Juegas hasta 2 cartas más de tu mano en este mismo turno.';
+      case 'second': return 'Cambias tu mano completa por la de otro jugador y juegas una de las cartas que recibes.';
+      case 'suit': return 'Cuando te lancen un virus, puedes usarla para rebotarlo a otro cuerpo (o descartarlo) y robas una carta. Solo protege contra virus, no contra otros tratamientos.';
+      case 'quarantine': return 'Aíslas un virus de un órgano infectado: el virus sale de juego (la cuarentena) y el órgano queda libre.';
+      case 'apparition': return 'Recuperas la última carta del descarte y puedes jugarla en este mismo turno.';
+      case 'bodies': return 'Todos los cuerpos giran un lugar, en el sentido que elijas (horario o antihorario).';
+      case 'alien': return 'Intercambias órganos entre dos jugadores distintos de ti, en cualquier estado.';
+      case 'thief': return 'Robas un órgano de ' + col + ' de otro jugador, aunque esté inmunizado.';
+      case 'failed': return 'Actúa como un virus sobre un órgano rival infectado o vacunado, o como una medicina sobre un órgano tuyo infectado o vacunado.';
+      case 'trick': return 'El jugador que elijas queda maldito: no puede ganar hasta que se libre de la maldición.';
+    }
+    return '';
+  }
+  function helpHTML() {
+    if (!ui.help || !g) return '';
+    const c = myHand().find(x => x.i === ui.help); if (!c) return '';
+    return '<div class="overlay helpov" data-act="helpclose"><div class="card-box helpbox"><div class="helpcard">' + Art.svg(c, { label: esc(shortCardName(c)) }) + '</div>' +
+      '<div class="helptxt"><h3>' + esc(cardName(c)) + '</h3><p>' + esc(cardHelp(c)) + '</p><button class="btn" data-act="helpclose">Entendido</button></div></div></div>';
+  }
+
+  // ---------- historial de jugadas ----------
+  function historyHTML() {
+    if (!ui.hist || !g) return '';
+    const names = Object.keys(g.players).map(u => ({ u, n: g.players[u].name })).sort((x, y) => y.n.length - x.n.length);
+    const rows = (g.log || []).slice().reverse().map(l => {
+      const p = names.find(x => l.indexOf(x.n) === 0);
+      return '<li><span class="hav">' + (p ? esc(g.players[p.u].av || '') : '•') + '</span><span>' + (p ? '<b>' + esc(p.n) + '</b>' + esc(l.slice(p.n.length)) : esc(l)) + '</span></li>';
+    }).join('');
+    return '<div class="overlay histov" data-act="histclose"><div class="card-box histbox"><div class="histhead"><h3>📜 Historial de jugadas</h3><button class="menubtn" data-act="histclose" aria-label="Cerrar">✕</button></div><ol class="histlist">' + rows + '</ol></div></div>';
+  }
+
   function menuHTML() {
     if (!ui.menu) return '';
     const host = g.host === me;
     const c = ui.confirm;
-    const leaveLbl = (P2P && host) ? 'Cerrar la sala (termina la partida para todos)' : 'Salir de la partida';
+    const heir = (P2P && host) ? heirOf(g) : null;
+    const leaveLbl = (P2P && host) ? (heir ? 'Salir (otro jugador sigue como anfitrión)' : 'Cerrar la sala (termina la partida para todos)') : 'Salir de la partida';
     return '<div class="menupanel">' +
       (host ? '<button class="btn alt" data-act="menu-reset">' + (c === 'reset' ? '¿Seguro? Toca otra vez para reiniciar' : 'Reiniciar: volver a la sala de espera') + '</button>' +
         '<p class="note">Sirve si alguien se fue y quieres empezar otra partida. En la sala de espera puedes quitar a quien ya no esté.</p>' : '') +
+      '<button class="btn alt" data-act="hist">📜 Ver historial de jugadas</button>' + alertsRow() +
       '<button class="btn alt" data-act="menu-leave">' + (c === 'leave' ? '¿Seguro? Toca otra vez para salir' : leaveLbl) + '</button>' +
-      (!(P2P && host) ? '<p class="note">Si sales, los demás siguen sin ti. Puedes volver a entrar con el código.</p>' : '') + '</div>';
+      (heir ? '<button class="btn alt" data-act="menu-close">' + (c === 'close' ? '¿Seguro? Toca otra vez para cerrar' : 'Cerrar la sala para todos') + '</button>' : '') +
+      (heir ? '<p class="note">Si sales, la partida sigue con los demás y tu lugar queda como ausente.</p>' : (!(P2P && host) ? '<p class="note">Si sales, los demás siguen sin ti. Puedes volver a entrar con el código.</p>' : '')) + '</div>';
   }
   function gameHTML() {
     const mt = myTurn();
@@ -2363,7 +2662,6 @@ if (typeof module !== 'undefined') module.exports = Bot;
     const sides = LY.l.length || LY.r.length;
     const topTxt = g.status === 'ended' ? 'Partida terminada' : mt ? 'Tu turno' : 'Turno de ' + esc(shortName(g.order[g.turn]));
     const lastLog = g.log && g.log.length ? g.log[g.log.length - 1] : '';
-    const logs = (g.log || []).slice(-14).reverse().map(l => '<div>' + esc(l) + '</div>').join('');
     const shown = fxHold.length ? g.discard.filter(c => fxHold.indexOf(c.i) < 0) : g.discard; // la carta que está volando aún no aparece en el descarte
     const top = shown.length ? shown[shown.length - 1] : null;
     const quar = (g.quarantine || []).length;
@@ -2371,7 +2669,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
     if (g.status === 'ended') {
       const won = g.winner === me;
       overlay = '<div class="overlay"><div class="card-box banner"><h2>' + (won ? '¡Ganaste!' : esc(shortName(g.winner)) + ' ganó') + '</h2>' +
-        '<p class="note">' + (won ? 'Completaste un cuerpo sano.' : 'Completó un cuerpo sano.') + '</p><div class="bar">' +
+        '<p class="note">' + (won ? 'Completaste un cuerpo sano.' : 'Completó un cuerpo sano.') + '</p>' + scoreLine() + '<div class="bar">' +
         (g.host === me ? '<button class="btn" data-act="again">Nueva partida</button>' : '<button class="btn alt" disabled>Esperando al anfitrión</button>') +
         '<button class="btn alt" data-act="leave">Salir</button></div></div></div>';
     } else if (iDefend()) {
@@ -2380,7 +2678,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
         (suit ? '<div class="askcard">' + Art.svg(suit, { label: 'Traje de protección' }) + '</div>' : '') +
         '<div class="bar wrapbar"><button class="btn" data-act="suit-yes">Usar Traje y robar carta</button><button class="btn alt" data-act="suit-no">Dejar pasar</button></div></div></div>';
     }
-    return '<div class="top"><span class="turn' + (mt ? ' mine' : '') + '">' + topTxt + '<span id="tt"></span></span><span class="topr"><span class="code">SALA ' + esc(g.code) + '</span>' + voiceBtn() + '<button class="menubtn" data-act="menu" aria-label="Menú" aria-expanded="' + ui.menu + '">⋯</button></span></div>' + menuHTML() +
+    return '<div class="top"><span class="turn' + (mt ? ' mine' : '') + '">' + topTxt + '<span id="tt"></span></span><span class="topr"><span class="code">' + esc(g.code) + '</span>' + voiceBtn() + reactBtn() + '<button class="menubtn" data-act="menu" aria-label="Menú" aria-expanded="' + ui.menu + '">⋯</button></span></div>' + menuHTML() +
       '<div class="felt">' +
       '<div class="stage" style="--side:' + (sides ? '92px' : '0px') + '">' +
       '<div class="row-top">' + part(LY.t, 'top') + '</div>' +
@@ -2390,9 +2688,9 @@ if (typeof module !== 'undefined') module.exports = Bot;
       '<div class="pile">' + (top ? miniCard(top) : '<div class="slot"></div>') + '<span><b>' + shown.length + '</b> Descarte</span></div></div>' +
       (quar ? '<div class="quar">☣️ Cuarentena: ' + quar + '</div>' : '') +
       '<div class="last">' + esc(lastLog) + '</div>' +
-      '<details class="log"><summary>Registro</summary>' + logs + '</details></div>' +
+      '<button class="loglink" data-act="hist">📜 Historial</button></div>' +
       '<div class="col-right">' + part(LY.r, 'right') + '</div></div>' +
-      '<div class="mine-row">' + seatBlock(me, 'me') + '</div>' + overlay + '</div>' +
+      '<div class="mine-row">' + seatBlock(me, 'me') + '</div>' + overlay + '</div>' + reactTray() + helpHTML() + historyHTML() +
       (g.status === 'playing' ? trayHTML() : '');
   }
 
@@ -2419,6 +2717,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
   }
   function render() {
     const fxNew = fxDetect();
+    reactDetect(); alertDetect();
     if (!g || g.status !== 'playing') { seen.clear(); seenReady = false; }
     renderIds = [];
     let html;
@@ -2444,10 +2743,32 @@ if (typeof module !== 'undefined') module.exports = Bot;
 
   // ---------- eventos ----------
   window.addEventListener('virus-voice', () => { if (g) render(); });
+  // Mantener presionada una carta de tu mano (o clic derecho) muestra qué hace
+  let lpTimer = null, lpFired = false, lpX = 0, lpY = 0;
+  const lpStop = () => { if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; } };
+  function showHelp(id) { if (!g || g.status !== 'playing' || !myHand().some(c => c.i === id)) return; lpFired = true; setTimeout(() => { lpFired = false; }, 700); ui.help = id; ui.menu = false; ui.react = false; render(); }
+  app.addEventListener('pointerdown', e => {
+    const b = e.target.closest('[data-act=card]'); lpStop(); lpFired = false;
+    if (!b) return;
+    lpX = e.clientX; lpY = e.clientY;
+    lpTimer = setTimeout(() => { lpTimer = null; showHelp(+b.dataset.i); }, 480);
+  });
+  app.addEventListener('pointermove', e => { if (lpTimer && (Math.abs(e.clientX - lpX) > 10 || Math.abs(e.clientY - lpY) > 10)) lpStop(); });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(n => app.addEventListener(n, lpStop));
+  app.addEventListener('contextmenu', e => { const b = e.target.closest('[data-act=card]'); if (b) { e.preventDefault(); lpStop(); if (!ui.help) showHelp(+b.dataset.i); } });
   app.addEventListener('click', e => {
     const t = e.target.closest('[data-act]');
     if (!t) return;
     const act = t.dataset.act;
+    if (lpFired && act === 'card') { lpFired = false; return; } // el clic que sigue a una pulsación larga no juega la carta
+    if (act === 'refreshapp') return hardRefresh();
+    if (act === 'react') { ui.react = !ui.react; return render(); }
+    if (act === 'sendreact') return sendReact(t.dataset.e);
+    if (act === 'alerts') { store.set('virus.alerts', alertsOn() ? '0' : '1'); if (alertsOn()) { beep(); try { navigator.vibrate && navigator.vibrate(120); } catch (e2) { } } return render(); }
+    if (act === 'notifperm') return askNotif();
+    if (act === 'hist') { ui.hist = true; ui.menu = false; return render(); }
+    if (act === 'histclose') { if (t.classList.contains('histov') && e.target !== t) return; ui.hist = false; return render(); }
+    if (act === 'helpclose') { ui.help = null; return render(); }
     if (act === 'reload') { try { location.reload(); } catch (e) { } return; }
     if (act === 'perm-manage') { return (async () => { try { await perm.manage(); } catch (e) { } await retryDb(); })(); }
     if (act === 'perm-request') { return (async () => { try { await perm.request(['db', 'user']); } catch (e) { } await retryDb(); })(); }
@@ -2460,6 +2781,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
     if (act === 'rmbot') return removeBot(t.dataset.p);
     if (act === 'menu') { ui.menu = !ui.menu; ui.confirm = ''; return render(); }
     if (act === 'menu-reset') { if (ui.confirm === 'reset') return resetToLobby(); ui.confirm = 'reset'; return render(); }
+    if (act === 'menu-close') { if (ui.confirm === 'close') return closeRoom(); ui.confirm = 'close'; return render(); }
     if (act === 'menu-leave') { if (ui.confirm === 'leave') return leaveGame(); ui.confirm = 'leave'; return render(); }
     if (act === 'voice') { if (window.VIRUS_VOICE) window.VIRUS_VOICE.toggle(); return; }
     if (act === 'avatar') return setAvatar(t.dataset.a);
@@ -2507,12 +2829,22 @@ if (typeof module !== 'undefined') module.exports = Bot;
 })();
 
 </script>
+<div id="updbar"><span>Hay una versión nueva del juego</span><button type="button" onclick="location.reload()">Actualizar</button></div>
 <button class="installpill" id="installpill" type="button">📲 Instalar app</button>
 <script>
 (function () {
   var standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone;
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !/[?&]nosw/.test(location.search)) {
     window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () { }); });
+  }
+  var had = !!(navigator.serviceWorker && navigator.serviceWorker.controller);
+  if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      if (!had) { had = true; return; } // primera instalación: no hay nada que actualizar
+      if (!document.querySelector('.top, .room-code')) { location.reload(); return; } // en la pantalla de inicio se recarga sola
+      document.getElementById('updbar').classList.add('show'); // en una sala, se avisa para no interrumpir
+    });
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) navigator.serviceWorker.getRegistration().then(function (r) { if (r) r.update(); }).catch(function () { }); });
   }
   var pill = document.getElementById('installpill'), evt = null;
   window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); evt = e; refresh(); });
