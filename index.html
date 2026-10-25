@@ -6,7 +6,7 @@
 <title>Virus!</title>
 <meta name="description" content="Virus! el juego de cartas, en línea y sin cuentas">
 <meta name="theme-color" content="#0F473A">
-<script>window.VIRUS_BUILD='25-oct 13:56';</script>
+<script>window.VIRUS_BUILD='25-oct 18:24';</script>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -164,7 +164,7 @@ details.rules p { margin: 8px 0; }
 .who { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; overflow: hidden; }
 .nm { font-weight: 700; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 96px; }
 .nm small { font-size: 10px; }
-.curse { margin-left: 3px; }
+
 .sub { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--on-felt-dim); }
 .cnt { display: inline-flex; align-items: center; gap: 3px; }
 .cnt i { width: 9px; height: 13px; border-radius: 2px; border: 1px solid #fff; background: repeating-linear-gradient(45deg, #2E5BA8 0 3px, #244A8A 3px 6px); }
@@ -313,6 +313,13 @@ details.log div { padding: 2px 0; }
 .histlist li:first-child { background: rgba(31, 138, 112, .12); border-radius: 8px; }
 .hav { flex: none; width: 22px; text-align: center; }
 .helpov, .histov { z-index: 50; }
+
+/* ---- Truco o trato: carta maldita junto al nombre ---- */
+.curse { flex: none; width: 38px; margin: -6px -4px -6px 2px; transform: rotate(7deg); filter: drop-shadow(0 3px 5px rgba(0, 0, 0, .5)); border-radius: 5px; box-shadow: 0 0 0 2px #FF9F3A, 0 0 12px rgba(255, 159, 58, .85); }
+.curse svg { display: block; width: 100%; height: auto; }
+.seat.side .curse { margin: 2px 0 -2px; transform: rotate(-4deg); }
+@media (prefers-reduced-motion: no-preference) { .curse { animation: cursepulse 2.2s ease-in-out infinite; } }
+@keyframes cursepulse { 0%, 100% { box-shadow: 0 0 0 2px #FF9F3A, 0 0 8px rgba(255, 159, 58, .6); } 50% { box-shadow: 0 0 0 2px #FFC46B, 0 0 16px rgba(255, 159, 58, 1); } }
 
 </style>
 </head>
@@ -1364,17 +1371,17 @@ const Engine = (function () {
 
 if (typeof module !== 'undefined') module.exports = Engine;
 
-/* Arte de las cartas: ilustraciones SVG originales, con la lógica visual del juego de mesa
-   (fondo del color del órgano, marco blanco, ilustración grande, marcas de expansión). */
+/* Arte de las cartas: ilustraciones SVG originales.
+   Estilo de carta física: marco doble, fondo con rayos, ilustración en un medallón, cinta con el nombre
+   y un ícono del órgano (su forma también ayuda a quien confunde colores). */
 const Art = (function () {
   const BG = { red: '#E04652', green: '#35A363', blue: '#3E73D8', yellow: '#E3AE28', bionic: '#8C95A6', mutant: '#F08A24' };
   const GROUP = { base: '#6A4A9C', evo: '#1E8A91', hall: '#C4560F' };
   const EVO_T = ['overtime', 'second', 'suit', 'quarantine'];
   const HALL_T = ['thief', 'alien', 'apparition', 'failed', 'trick', 'bodies'];
-  const GLYPH = {
-    swap: '🔄', steal: '🥷', spread: '🦠', glove: '🧤', error: '🩺', overtime: '⏰', second: '👥', suit: '🛡️', quarantine: '🔒',
-    apparition: '👻', bodies: '🧟', alien: '👽', thief: '🦹', failed: '🎭', trick: '🎃'
-  };
+  const INK = '#2B2540';
+  const RAINBOW = ['#E04652', '#E3AE28', '#35A363', '#3E73D8'];
+  const EMOJI = 'Apple Color Emoji,Segoe UI Emoji,Noto Color Emoji,sans-serif';
 
   function mix(hex, to, p) {
     const n = parseInt(hex.slice(1), 16), t = to === 'w' ? 255 : 0;
@@ -1383,103 +1390,256 @@ const Art = (function () {
     return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
   }
   const light = (h, p) => mix(h, 'w', p), dark = (h, p) => mix(h, 'k', p);
-  const RAINBOW = ['#E04652', '#E3AE28', '#35A363', '#3E73D8'];
+
+  // ---- ayudantes de dibujo ----
+  const A = (f, s, w) => (f ? ' fill="' + f + '"' : ' fill="none"') + (s ? ' stroke="' + s + '" stroke-width="' + (w || 2.2) + '" stroke-linejoin="round" stroke-linecap="round"' : '');
+  const P = (d, f, s, w, x) => '<path d="' + d + '"' + A(f, s, w) + (x || '') + '/>';
+  const C = (x, y, r, f, s, w, o) => '<circle cx="' + x + '" cy="' + y + '" r="' + r + '"' + A(f, s, w) + (o ? ' opacity="' + o + '"' : '') + '/>';
+  const E = (x, y, rx, ry, f, s, w, o) => '<ellipse cx="' + x + '" cy="' + y + '" rx="' + rx + '" ry="' + ry + '"' + A(f, s, w) + (o ? ' opacity="' + o + '"' : '') + '/>';
+  const R = (x, y, w, h, r, f, s, sw) => '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + r + '"' + A(f, s, sw) + '/>';
+  const tube = (d, col, w) => P(d, null, INK, w + 3.2) + P(d, null, col, w); // tubo con contorno
+  const grad = (id, a, b, vertical) => '<linearGradient id="' + id + '" x1="0" y1="0" x2="' + (vertical ? 0 : 1) + '" y2="1"><stop offset="0" stop-color="' + a + '"/><stop offset="1" stop-color="' + b + '"/></linearGradient>';
 
   function bgOf(c) {
     if (c.t === 'x') return EVO_T.indexOf(c.k) >= 0 ? GROUP.evo : HALL_T.indexOf(c.k) >= 0 ? GROUP.hall : GROUP.base;
     return BG[c.c] || '#777';
   }
 
+  // ---- marco: borde blanco, fondo con degradado y rayos, línea interior ----
   function frame(c, bg) {
+    const gid = 'bg' + bg.slice(1);
+    const inner = '<clipPath id="fcp"><rect x="5" y="5" width="90" height="130" rx="6.5"/></clipPath>';
     let fill;
     if (c.c === 'wild' && c.t !== 'x') {
-      fill = '<clipPath id="vcp"><rect x="5" y="5" width="90" height="130" rx="6.5"/></clipPath><g clip-path="url(#vcp)">' +
-        '<rect x="5" y="5" width="45" height="65" fill="' + RAINBOW[0] + '"/><rect x="50" y="5" width="45" height="65" fill="' + RAINBOW[1] + '"/>' +
+      fill = '<g clip-path="url(#fcp)"><rect x="5" y="5" width="45" height="65" fill="' + RAINBOW[0] + '"/><rect x="50" y="5" width="45" height="65" fill="' + RAINBOW[1] + '"/>' +
         '<rect x="5" y="70" width="45" height="65" fill="' + RAINBOW[2] + '"/><rect x="50" y="70" width="45" height="65" fill="' + RAINBOW[3] + '"/></g>';
-    } else fill = '<rect x="5" y="5" width="90" height="130" rx="6.5" fill="' + bg + '"/>';
+    } else {
+      fill = '<defs><radialGradient id="' + gid + '" cx=".5" cy=".42" r=".75"><stop offset="0" stop-color="' + light(bg, .22) + '"/><stop offset="1" stop-color="' + dark(bg, .12) + '"/></radialGradient></defs>' +
+        '<rect x="5" y="5" width="90" height="130" rx="6.5" fill="url(#' + gid + ')"/>';
+    }
     if (c.t !== 'x' && (c.ev || c.ex)) { // mitad del color del órgano (arriba a la izquierda) y mitad negra o dorada (abajo a la derecha)
-      fill += '<clipPath id="hcp"><rect x="5" y="5" width="90" height="130" rx="6.5"/></clipPath><g clip-path="url(#hcp)"><polygon points="95,5 95,135 5,135" fill="' + (c.ev ? '#17151D' : '#F2C230') + '"/>' +
+      fill += '<g clip-path="url(#fcp)"><polygon points="95,5 95,135 5,135" fill="' + (c.ev ? '#17151D' : '#F2C230') + '"/>' +
         '<line x1="95" y1="5" x2="5" y2="135" stroke="#fff" stroke-width="1.4" opacity=".75"/></g>';
+    }
+    // rayos suaves detrás de la ilustración
+    let rays = '';
+    for (let i = 0; i < 14; i++) {
+      const a0 = (i / 14) * Math.PI * 2, a1 = a0 + Math.PI / 14, r = 110;
+      rays += '<polygon points="50,64 ' + (50 + Math.cos(a0) * r).toFixed(1) + ',' + (64 + Math.sin(a0) * r).toFixed(1) + ' ' + (50 + Math.cos(a1) * r).toFixed(1) + ',' + (64 + Math.sin(a1) * r).toFixed(1) + '" fill="#fff" opacity=".09"/>';
     }
     const gold = c.ex ? '<rect x="3.2" y="3.2" width="93.6" height="133.6" rx="8" fill="none" stroke="#F2C230" stroke-width="2.6"/>' : '';
     const dk = c.ev ? '<rect x="3.2" y="3.2" width="93.6" height="133.6" rx="8" fill="none" stroke="#2B1B3D" stroke-width="2.6"/>' : '';
-    return '<rect x="1" y="1" width="98" height="138" rx="9.5" fill="#fff" stroke="#00000022" stroke-width=".8"/>' + fill +
-      '<circle cx="50" cy="64" r="38" fill="#fff" opacity=".2"/>' + gold + dk;
+    return '<rect x="1" y="1" width="98" height="138" rx="9.5" fill="#fff" stroke="#00000022" stroke-width=".8"/>' + inner + fill +
+      '<g clip-path="url(#fcp)">' + rays + '</g>' +
+      '<rect x="8.2" y="8.2" width="83.6" height="123.6" rx="4.6" fill="none" stroke="#fff" stroke-width="1" opacity=".55"/>' + gold + dk;
   }
 
-  function face(cx, cy, k) {
-    k = k || 1;
-    const e = 6 * k, p = 2.6 * k;
-    return '<g><circle cx="' + (cx - 8 * k) + '" cy="' + cy + '" r="' + e + '" fill="#fff"/><circle cx="' + (cx + 8 * k) + '" cy="' + cy + '" r="' + e + '" fill="#fff"/>' +
-      '<circle cx="' + (cx - 7 * k) + '" cy="' + (cy + 1) + '" r="' + p + '" fill="#22232B"/><circle cx="' + (cx + 9 * k) + '" cy="' + (cy + 1) + '" r="' + p + '" fill="#22232B"/>' +
-      '<path d="M' + (cx - 6 * k) + ' ' + (cy + 9 * k) + ' Q' + cx + ' ' + (cy + 15 * k) + ' ' + (cx + 6 * k) + ' ' + (cy + 9 * k) + '" fill="none" stroke="#22232B" stroke-width="2.2" stroke-linecap="round"/>' +
-      '<circle cx="' + (cx - 14 * k) + '" cy="' + (cy + 7 * k) + '" r="' + 3 * k + '" fill="#FF8FA3" opacity=".6"/><circle cx="' + (cx + 14 * k) + '" cy="' + (cy + 7 * k) + '" r="' + 3 * k + '" fill="#FF8FA3" opacity=".6"/></g>';
-  }
+  // medallón claro detrás de órganos, virus y medicinas
+  const disc = bg => '<circle cx="50" cy="63" r="39.5" fill="#fff" opacity=".9"/><circle cx="50" cy="63" r="36.5" fill="' + light(bg, .8) + '"/>' +
+    '<circle cx="50" cy="63" r="36.5" fill="none" stroke="' + light(bg, .35) + '" stroke-width="1.2"/>';
 
+  // ---- órganos (colores naturales, relieve y sombras) ----
+  const ORG = {
+    red: ['#F4727C', '#C93642', '#6E1A24'], green: ['#FBC0AE', '#E98B83', '#7B3A35'],
+    blue: ['#FBBFD3', '#E48AAC', '#7C3558'], yellow: ['#FFF1C8', '#DDBE7C', '#6A4E1E']
+  };
+  const defsOrg = k => '<defs>' + grad('og' + k, ORG[k][0], ORG[k][1], true) + '</defs>';
+  const gloss = (d, o) => P(d, null, '#fff', 3.4, ' opacity="' + (o || .65) + '"');
+
+  function heart() {
+    const k = 'red', o = ORG[k], fill = 'url(#og' + k + ')';
+    return defsOrg(k) +
+      tube('M47 56 C44 38 52 26 67 31', '#E8616B', 9) + tube('M56 52 C58 40 70 36 77 44', '#E8616B', 7) + tube('M38 52 C33 40 30 32 25 27', '#6F8FE0', 7) +
+      P('M50 105 C19 87 11 62 19 48 C26 37 42 38 48 49 C55 37 72 36 80 49 C89 64 81 88 50 105Z', fill, o[2], 2.6) +
+      P('M81 56 C88 72 76 92 52 103 C68 88 78 74 81 56Z', '#7E1D28', null, 0, ' opacity=".28"') +
+      P('M49 52 C52 66 58 80 63 91', null, o[2], 1.7, ' opacity=".5"') + P('M44 62 C46 72 50 80 54 86', null, o[2], 1.4, ' opacity=".35"') +
+      gloss('M28 56 C28 49 34 45 40 47') + C(35, 66, 2.4, '#fff', null, 0, .55);
+  }
+  function stomach() {
+    const k = 'green', o = ORG[k], fill = 'url(#og' + k + ')';
+    return defsOrg(k) +
+      tube('M44 20 C44 30 46 34 50 40', '#F2A59B', 9) + tube('M73 62 C88 54 95 68 87 80', '#F2A59B', 8) +
+      P('M41 38 C40 49 27 52 26 68 C25 86 39 99 55 99 C73 99 83 87 79 71 C76 59 63 57 57 47 C54 42 53 38 51 36Z', fill, o[2], 2.6) +
+      P('M80 70 C82 86 70 98 56 99 C70 94 78 84 80 70Z', '#8A3F3A', null, 0, ' opacity=".25"') +
+      P('M36 72 C42 67 51 69 57 76', null, o[2], 1.7, ' opacity=".45"') + P('M38 84 C47 79 57 81 65 88', null, o[2], 1.7, ' opacity=".45"') + P('M51 60 C56 64 62 66 69 68', null, o[2], 1.5, ' opacity=".4"') +
+      gloss('M33 64 C34 57 38 53 43 52') + C(36, 78, 2.2, '#fff', null, 0, .5);
+  }
+  function brain() {
+    const k = 'blue', o = ORG[k], fill = 'url(#og' + k + ')';
+    return defsOrg(k) +
+      P('M40 83 C42 96 59 96 61 83 C58 88 43 88 40 83Z', '#D8779B', o[2], 2.2) + P('M47 90 V102 H54 V90', '#F2A8C4', o[2], 2.2) +
+      P('M50 31 C40 21 22 27 24 43 C14 47 14 63 23 67 C20 80 33 92 46 85 C48 88 52 88 54 85 C67 92 80 80 77 67 C86 63 86 47 76 43 C78 27 60 21 50 31Z', fill, o[2], 2.6) +
+      P('M50 33 C46 45 54 53 49 64 C47 73 52 79 50 85', null, o[2], 1.9, ' opacity=".6"') +
+      P('M29 45 c5 -7 12 -4 13 3 M27 59 c7 -6 13 -1 15 5 M31 73 c6 -5 11 0 14 5', null, o[2], 1.7, ' opacity=".55"') +
+      P('M71 45 c-5 -7 -12 -4 -13 3 M73 59 c-7 -6 -13 -1 -15 5 M69 73 c-6 -5 -11 0 -14 5', null, o[2], 1.7, ' opacity=".55"') +
+      gloss('M31 40 C33 35 38 33 43 35') + C(28, 52, 2, '#fff', null, 0, .5);
+  }
+  function bone() {
+    const k = 'yellow', o = ORG[k], fill = 'url(#og' + k + ')';
+    return defsOrg(k) + '<g transform="rotate(-36 50 63)">' +
+      C(25, 52, 10, fill, o[2], 2.6) + C(25, 74, 10, fill, o[2], 2.6) + C(75, 52, 10, fill, o[2], 2.6) + C(75, 74, 10, fill, o[2], 2.6) +
+      R(25, 52, 50, 22, 4, fill) + P('M25 52 H75 M25 74 H75', null, o[2], 2.6) +
+      R(26, 55, 48, 6, 3, '#fff', null, 0).replace('<rect', '<rect opacity=".55"') +
+      P('M46 64 l5 5 -4 5 M60 53 l4 6', null, o[2], 1.5, ' opacity=".5"') + C(20, 48, 2.2, '#fff', null, 0, .7) + C(80, 70, 2.2, o[2], null, 0, .25) + '</g>';
+  }
+  function wildOrgan() {
+    const q = (cc, x, y) => '<g transform="translate(' + (x - 10) + ' ' + (y - 10) + ')">' + glyph(cc) + '</g>';
+    return '<circle cx="50" cy="63" r="31" fill="#fff" stroke="' + INK + '" stroke-width="2.6"/>' +
+      '<path d="M50 32 A31 31 0 0 1 81 63 L50 63Z" fill="' + RAINBOW[1] + '"/><path d="M81 63 A31 31 0 0 1 50 94 L50 63Z" fill="' + RAINBOW[3] + '"/>' +
+      '<path d="M50 94 A31 31 0 0 1 19 63 L50 63Z" fill="' + RAINBOW[2] + '"/><path d="M19 63 A31 31 0 0 1 50 32 L50 63Z" fill="' + RAINBOW[0] + '"/>' +
+      '<circle cx="50" cy="63" r="31" fill="none" stroke="' + INK + '" stroke-width="2.6"/><path d="M50 32 V94 M19 63 H81" stroke="#fff" stroke-width="2.4"/>' +
+      '<g transform="translate(50 63) scale(1.15) translate(-50 -63)">' + q('red', 38, 51) + q('yellow', 62, 51) + q('green', 38, 75) + q('blue', 62, 75) + '</g>' +
+      gloss('M28 47 C32 40 40 37 47 37', .7) + '<path d="M82 33 l2 5 5 2 -5 2 -2 5 -2 -5 -5 -2 5 -2z" fill="#fff"/>';
+  }
+  function bionic() {
+    const m = '#C9D0DC', m2 = '#DDE2EA', st = ' stroke="' + INK + '" stroke-width="2.4" stroke-linejoin="round"';
+    return '<rect x="38" y="82" width="24" height="24" rx="5" fill="' + m + '"' + st + '/><rect x="30" y="50" width="40" height="36" rx="9" fill="' + m2 + '"' + st + '/>' +
+      '<rect x="33" y="30" width="9" height="24" rx="4.5" fill="' + m + '"' + st + '/><rect x="45.5" y="25" width="9" height="29" rx="4.5" fill="' + m + '"' + st + '/><rect x="58" y="30" width="9" height="24" rx="4.5" fill="' + m + '"' + st + '/>' +
+      '<circle cx="50" cy="67" r="7" fill="#E04652" stroke="' + INK + '" stroke-width="2"/><circle cx="50" cy="67" r="2.6" fill="#fff"/>' +
+      '<circle cx="36" cy="58" r="1.8" fill="' + INK + '"/><circle cx="64" cy="58" r="1.8" fill="' + INK + '"/><circle cx="36" cy="79" r="1.8" fill="' + INK + '"/><circle cx="64" cy="79" r="1.8" fill="' + INK + '"/>' +
+      '<path d="M42 94 h16 M42 99 h16" stroke="' + INK + '" stroke-width="1.6" stroke-linecap="round"/><path d="M34 56 h6" stroke="#fff" stroke-width="2" stroke-linecap="round" opacity=".8"/>';
+  }
+  function mutant() {
+    return '<defs>' + grad('ogmut', '#FFD9A8', '#F0A560', true) + '</defs>' +
+      P('M24 104 C14 74 42 70 40 52 C38 36 58 28 68 38 C78 50 62 56 64 64 C66 74 84 76 78 104Z', 'url(#ogmut)', '#7A4210', 2.6) +
+      C(49, 51, 8.5, '#fff', '#7A4210', 2) + C(50, 52, 3.6, '#22232B') + C(51.2, 50.8, 1.1, '#fff') +
+      C(36, 84, 2.8, '#7A4210', null, 0, .45) + C(45, 94, 2.8, '#7A4210', null, 0, .45) + C(62, 90, 2.2, '#7A4210', null, 0, .45) +
+      gloss('M30 80 C30 74 34 72 36 70', .6);
+  }
   function organ(c, bg) {
-    const body = c.c === 'wild' ? '#fff' : light(bg, .6), line = c.c === 'wild' ? '#4A4E69' : dark(bg, .5);
-    const st = ' stroke="' + line + '" stroke-width="2.6" stroke-linejoin="round"';
-    switch (c.c) {
-      case 'red': return '<path d="M50 102 C14 78 10 50 24 38 C35 29 47 35 50 46 C53 35 65 29 76 38 C90 50 86 78 50 102Z" fill="' + body + '"' + st + '/>' + face(50, 62);
-      case 'green': return '<path d="M40 24 h17 v14 c0 7 5 9 11 12 c15 8 19 20 14 33 c-6 15 -24 20 -38 13 c-16 -7 -24 -22 -18 -38 c5 -12 14 -14 14 -24z" fill="' + body + '"' + st + '/>' +
-        '<path d="M40 24 h17" stroke="' + line + '" stroke-width="5" stroke-linecap="round"/>' + face(52, 70);
-      case 'blue': return '<path d="M50 32 C40 22 22 28 24 44 C14 48 14 64 23 68 C20 82 34 94 46 88 C48 92 52 92 54 88 C66 94 80 82 77 68 C86 64 86 48 76 44 C78 28 60 22 50 32Z" fill="' + body + '"' + st + '/>' +
-        '<path d="M50 34 V88 M32 50 q6 -4 10 2 M68 50 q-6 -4 -10 2 M30 70 q7 3 12 -3 M70 70 q-7 3 -12 -3" fill="none" stroke="' + line + '" stroke-width="1.8" stroke-linecap="round" opacity=".55"/>' + face(50, 62, .9);
-      case 'yellow': return '<g transform="rotate(-38 50 64)"><rect x="26" y="56" width="48" height="16" rx="5" fill="' + body + '"' + st + '/>' +
-        '<circle cx="27" cy="56" r="9" fill="' + body + '"' + st + '/><circle cx="27" cy="72" r="9" fill="' + body + '"' + st + '/><circle cx="73" cy="56" r="9" fill="' + body + '"' + st + '/><circle cx="73" cy="72" r="9" fill="' + body + '"' + st + '/>' +
-        '<rect x="27" y="57.5" width="46" height="13" fill="' + body + '"/></g>' + face(50, 64, .8);
-      case 'wild': return '<circle cx="50" cy="64" r="32" fill="#fff"' + st + '/><path d="M50 32 A32 32 0 0 1 82 64 L50 64Z" fill="' + RAINBOW[1] + '" opacity=".8"/><path d="M82 64 A32 32 0 0 1 50 96 L50 64Z" fill="' + RAINBOW[3] + '" opacity=".8"/><path d="M50 96 A32 32 0 0 1 18 64 L50 64Z" fill="' + RAINBOW[2] + '" opacity=".8"/><path d="M18 64 A32 32 0 0 1 50 32 L50 64Z" fill="' + RAINBOW[0] + '" opacity=".8"/>' +
-        '<circle cx="50" cy="64" r="32" fill="none"' + st + '/>' + face(50, 62, .95);
-      case 'bionic': return '<rect x="38" y="80" width="24" height="26" rx="5" fill="#C9D0DC"' + st + '/><rect x="30" y="50" width="40" height="34" rx="9" fill="#DDE2EA"' + st + '/>' +
-        '<rect x="33" y="30" width="9" height="24" rx="4.5" fill="#C9D0DC"' + st + '/><rect x="45.5" y="26" width="9" height="28" rx="4.5" fill="#C9D0DC"' + st + '/><rect x="58" y="30" width="9" height="24" rx="4.5" fill="#C9D0DC"' + st + '/>' +
-        '<circle cx="50" cy="66" r="6" fill="#E04652"/><circle cx="50" cy="66" r="2.4" fill="#fff"/><circle cx="36" cy="58" r="1.8" fill="' + line + '"/><circle cx="64" cy="58" r="1.8" fill="' + line + '"/><path d="M42 92 h16 M42 98 h16" stroke="' + line + '" stroke-width="1.8"/>';
-      case 'mutant': return '<path d="M24 104 C14 74 42 70 40 52 C38 36 58 28 68 38 C78 50 62 56 64 64 C66 74 84 76 78 104Z" fill="' + body + '"' + st + '/>' +
-        '<circle cx="48" cy="50" r="7" fill="#fff"/><circle cx="49" cy="51" r="3" fill="#22232B"/><circle cx="36" cy="82" r="2.6" fill="' + line + '" opacity=".6"/><circle cx="44" cy="92" r="2.6" fill="' + line + '" opacity=".6"/><circle cx="62" cy="84" r="2.6" fill="' + line + '" opacity=".6"/><circle cx="68" cy="94" r="2.6" fill="' + line + '" opacity=".6"/>';
-    }
-    return '';
+    const art = { red: heart, green: stomach, blue: brain, yellow: bone, wild: wildOrgan, bionic, mutant }[c.c];
+    return disc(bg) + (art ? art() : '');
   }
 
+  // ---- virus: bolita caricaturesca con ojos grandes, sonrisa y espinas ----
   function virus(c, bg) {
     const wild = c.c === 'wild';
-    const body = wild ? '#3A3F58' : dark(bg, .55);
+    const body = wild ? '#4B4590' : dark(bg, .08), spike = wild ? null : dark(bg, .38), out = wild ? '#1F1B45' : dark(bg, .62);
+    const n = c.ev ? 12 : 10, Rr = c.ev ? 24 : 23, len = c.ev ? 12.5 : 9.5;
+    const cy = 63;
     let sp = '';
-    const n = c.ev ? 12 : 10, R = c.ev ? 25 : 23, len = c.ev ? 13 : 9;
     for (let i = 0; i < n; i++) {
-      const a = (i / n) * Math.PI * 2, x1 = 50 + Math.cos(a) * R, y1 = 62 + Math.sin(a) * R, x2 = 50 + Math.cos(a) * (R + len), y2 = 62 + Math.sin(a) * (R + len);
-      const col = wild ? RAINBOW[i % 4] : body;
-      sp += '<line x1="' + x1.toFixed(1) + '" y1="' + y1.toFixed(1) + '" x2="' + x2.toFixed(1) + '" y2="' + y2.toFixed(1) + '" stroke="' + col + '" stroke-width="4" stroke-linecap="round"/>' +
-        '<circle cx="' + x2.toFixed(1) + '" cy="' + y2.toFixed(1) + '" r="' + (c.ev ? 4.6 : 3.8) + '" fill="' + col + '"/>';
+      const a = (i / n) * Math.PI * 2 + .1, x1 = 50 + Math.cos(a) * Rr, y1 = cy + Math.sin(a) * Rr, x2 = 50 + Math.cos(a) * (Rr + len), y2 = cy + Math.sin(a) * (Rr + len);
+      const col = wild ? RAINBOW[i % 4] : spike;
+      sp += '<line x1="' + x1.toFixed(1) + '" y1="' + y1.toFixed(1) + '" x2="' + x2.toFixed(1) + '" y2="' + y2.toFixed(1) + '" stroke="' + out + '" stroke-width="7" stroke-linecap="round"/>' +
+        '<line x1="' + x1.toFixed(1) + '" y1="' + y1.toFixed(1) + '" x2="' + x2.toFixed(1) + '" y2="' + y2.toFixed(1) + '" stroke="' + col + '" stroke-width="3.6" stroke-linecap="round"/>' +
+        '<circle cx="' + x2.toFixed(1) + '" cy="' + y2.toFixed(1) + '" r="' + (c.ev ? 4.8 : 4.1) + '" fill="' + col + '" stroke="' + out + '" stroke-width="1.8"/>';
     }
-    const glow = c.ev ? '<circle cx="50" cy="62" r="44" fill="#7B2FF7" opacity=".28"/><circle cx="50" cy="62" r="40" fill="none" stroke="#F2C230" stroke-width="1.4" stroke-dasharray="3 3" opacity=".9"/>' : '';
-    return glow + sp + '<circle cx="50" cy="62" r="' + R + '" fill="' + body + '" stroke="' + dark(body, .3) + '" stroke-width="2"/>' +
-      '<ellipse cx="41" cy="59" rx="6" ry="7" fill="#FFF6C7"/><ellipse cx="59" cy="59" rx="6" ry="7" fill="#FFF6C7"/>' +
-      '<circle cx="42" cy="61" r="2.6" fill="#1A1A22"/><circle cx="58" cy="61" r="2.6" fill="#1A1A22"/>' +
-      '<path d="M34 50 L46 55 M66 50 L54 55" stroke="#1A1A22" stroke-width="3" stroke-linecap="round"/>' +
-      '<path d="M40 74 L44 70 L48 75 L52 70 L56 75 L60 70" fill="none" stroke="#FFF6C7" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>' +
-      '<circle cx="36" cy="46" r="3" fill="#fff" opacity=".35"/>';
+    const glow = c.ev ? '<circle cx="50" cy="63" r="42" fill="#7B2FF7" opacity=".22"/><circle cx="50" cy="63" r="39" fill="none" stroke="#F2C230" stroke-width="1.4" stroke-dasharray="3 3" opacity=".95"/>' : '';
+    const horns = c.ev ? P('M33 43 C29 34 31 28 36 25 C35 31 38 36 41 40Z M67 43 C71 34 69 28 64 25 C65 31 62 36 59 40Z', '#F2C230', out, 1.8) : '';
+    const gid = 'vg' + (wild ? 'w' : bg.slice(1));
+    const defs = '<defs><radialGradient id="' + gid + '" cx=".38" cy=".3" r=".85"><stop offset="0" stop-color="' + light(body, .38) + '"/><stop offset="1" stop-color="' + body + '"/></radialGradient></defs>';
+    const spots = wild ? C(38, 76, 2.4, RAINBOW[1]) + C(63, 74, 2.8, RAINBOW[2]) + C(61, 50, 2, RAINBOW[0]) : C(36, 74, 2.4, light(body, .4), null, 0, .8) + C(63, 76, 2.8, light(body, .4), null, 0, .8) + C(66, 52, 2, light(body, .4), null, 0, .8);
+    return disc(bg) + glow + sp + defs + C(50, cy, Rr, 'url(#' + gid + ')', out, 2.6) + spots + horns +
+      C(41, 59, 7.6, '#fff', out, 1.8) + C(59, 59, 7.6, '#fff', out, 1.8) + C(43, 61, 3.4, '#1A1A22') + C(57, 61, 3.4, '#1A1A22') + C(44.2, 59.8, 1.1, '#fff') + C(58.2, 59.8, 1.1, '#fff') +
+      P('M32 50 L46 55.5 M68 50 L54 55.5', null, '#1A1A22', 3.2) +
+      P('M37 71 Q50 85 63 71 Q50 76 37 71Z', '#3A1020', '#1A1A22', 1.6) + P('M41 73 l2.2 3.4 2.2 -3 M48 74.5 l2 3.6 2 -3.6 M55 73.5 l2.2 3 2.2 -3.4', '#fff', null, 0) +
+      E(38, 43, 7, 3.6, '#fff', null, 0, .45).replace('<ellipse', '<ellipse transform="rotate(-30 38 43)"');
   }
 
+  // ---- medicinas: frasco con cruz (normal) o matraz brillante (experimental) ----
+  function liquid(c, bg, d, id) {
+    if (c.c !== 'wild') return P(d, bg, null, 0);
+    return '<clipPath id="' + id + '"><path d="' + d + '"/></clipPath><g clip-path="url(#' + id + ')"><rect x="20" y="40" width="30" height="70" fill="' + RAINBOW[0] + '"/><rect x="40" y="40" width="22" height="70" fill="' + RAINBOW[1] + '"/><rect x="55" y="40" width="22" height="70" fill="' + RAINBOW[2] + '"/><rect x="68" y="40" width="26" height="70" fill="' + RAINBOW[3] + '"/></g>';
+  }
   function medicine(c, bg) {
-    const wild = c.c === 'wild';
-    const a = wild ? '#fff' : '#fff', b = wild ? '#FFD84D' : light(bg, .45), line = wild ? '#4A4E69' : dark(bg, .55);
+    const wild = c.c === 'wild', ink = wild ? INK : dark(bg, .62);
     if (c.ex) { // medicina experimental: matraz con líquido brillante
-      const liq = wild ? '#7BE0A8' : light(bg, .25);
-      return '<path d="M44 30 h12 v20 l20 34 c4 8 -1 16 -10 16 h-32 c-9 0 -14 -8 -10 -16 l20 -34z" fill="#fff" fill-opacity=".85" stroke="' + line + '" stroke-width="2.6" stroke-linejoin="round"/>' +
-        '<path d="M34 80 c8 -5 14 4 22 0 s10 -4 14 -1 l5 8 c3 6 -1 12 -8 12 h-32 c-7 0 -11 -6 -8 -12z" fill="' + liq + '" opacity=".95"/>' +
-        '<circle cx="46" cy="86" r="3" fill="#fff" opacity=".9"/><circle cx="56" cy="80" r="2.2" fill="#fff" opacity=".9"/><circle cx="52" cy="92" r="2" fill="#fff" opacity=".9"/>' +
-        '<rect x="41" y="26" width="18" height="6" rx="3" fill="' + line + '"/>' +
-        '<path d="M78 34 l2 5 5 2 -5 2 -2 5 -2 -5 -5 -2 5 -2z M22 46 l1.6 4 4 1.6 -4 1.6 -1.6 4 -1.6 -4 -4 -1.6 4 -1.6z" fill="#FFE27A"/>';
+      const fl = 'M44 28 h12 v21 l21 36 c4 9 -2 17 -11 17 h-32 c-9 0 -15 -8 -11 -17 l21 -36z';
+      const wave = 'M10 85 c10 -6 18 4 28 0 s12 -4 22 0 s12 4 22 0 s10 -3 16 0 V112 H10Z';
+      const fillL = wild ? '<rect x="10" y="84" width="22" height="30" fill="' + RAINBOW[0] + '"/><rect x="30" y="84" width="18" height="30" fill="' + RAINBOW[1] + '"/><rect x="46" y="84" width="18" height="30" fill="' + RAINBOW[2] + '"/><rect x="62" y="84" width="40" height="30" fill="' + RAINBOW[3] + '"/>' : P(wave, light(bg, .05));
+      const liqx = '<clipPath id="flc"><path d="' + fl + '"/></clipPath><g clip-path="url(#flc)">' + fillL + '</g>';
+      return disc(bg) + '<circle cx="50" cy="66" r="30" fill="#FFE27A" opacity=".25"/>' +
+        P(fl, '#fff', null, 0, ' fill-opacity=".85"') + liqx +
+        P(fl, null, ink, 2.6) + R(41, 23, 18, 7, 3.5, ink) + P('M47 52 l-1 14', null, '#fff', 2.4, ' opacity=".7"') +
+        C(45, 90, 3.2, '#fff', null, 0, .9) + C(57, 84, 2.4, '#fff', null, 0, .9) + C(52, 97, 2.2, '#fff', null, 0, .9) + C(60, 72, 2, '#fff', null, 0, .8) + C(42, 74, 1.6, '#fff', null, 0, .8) +
+        '<path d="M79 36 l2.2 5.4 5.4 2.2 -5.4 2.2 -2.2 5.4 -2.2 -5.4 -5.4 -2.2 5.4 -2.2z M21 48 l1.8 4.4 4.4 1.8 -4.4 1.8 -1.8 4.4 -1.8 -4.4 -4.4 -1.8 4.4 -1.8z" fill="#FFB800" stroke="#fff" stroke-width=".8"/>';
     }
-    return '<g transform="rotate(-42 50 64)"><rect x="18" y="49" width="64" height="30" rx="15" fill="' + a + '" stroke="' + line + '" stroke-width="2.6"/>' +
-      '<path d="M50 49 h17 a15 15 0 0 1 0 30 h-17z" fill="' + b + '" stroke="' + line + '" stroke-width="2.6" stroke-linejoin="round"/>' +
-      '<path d="M26 56 h14" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".8"/></g>' +
-      '<g transform="translate(66 38)"><circle r="9" fill="#fff" stroke="' + line + '" stroke-width="2"/><path d="M-4 0 h8 M0 -4 v8" stroke="#E04652" stroke-width="3" stroke-linecap="round"/></g>' +
-      '<circle cx="30" cy="96" r="3.2" fill="#fff" opacity=".8"/><circle cx="38" cy="102" r="2" fill="#fff" opacity=".8"/>';
+    const body = 'M34 52 h32 a8 8 0 0 1 8 8 v38 a8 8 0 0 1 -8 8 h-32 a8 8 0 0 1 -8 -8 v-38 a8 8 0 0 1 8 -8z';
+    const lq = 'M26 74 c6 -4 12 3 20 0 s12 -3 16 0 c4 2 8 0 12 -1 v25 a8 8 0 0 1 -8 8 h-32 a8 8 0 0 1 -8 -8z';
+    const cap = wild ? '#3F3A6B' : dark(bg, .25);
+    return disc(bg) +
+      '<g transform="translate(-6 0)">' +
+      P(body, '#fff', null, 0, ' fill-opacity=".8"') + liquid(c, wild ? '#7BE0A8' : light(bg, .12), lq, 'lqn') + P(body, null, ink, 2.6) +
+      R(36, 44, 28, 10, 3, '#fff', ink, 2.4) + R(33, 32, 34, 14, 4.5, cap, ink, 2.4) + P('M40 34 v10 M46 34 v10 M52 34 v10 M58 34 v10', null, '#fff', 1.1, ' opacity=".35"') +
+      R(33, 66, 34, 25, 4, '#fff', ink, 1.8) + '<path d="M44 78.5 h12 M50 72.5 v12" stroke="#E04652" stroke-width="4.4" stroke-linecap="round"/>' +
+      P('M31 58 v34', null, '#fff', 3, ' opacity=".6"') + '</g>' +
+      '<g transform="translate(72 99) rotate(-24)">' + R(-15, -6.5, 30, 13, 6.5, '#fff', ink, 2.2) + P('M0 -6.5 h8.5 a6.5 6.5 0 0 1 0 13 h-8.5z', wild ? '#FFD84D' : light(bg, .1), ink, 2.2) + P('M-10 -2.6 h8', null, '#fff', 2.2, ' opacity=".85"') + '</g>' +'<path d="M24 38 l1.8 4.4 4.4 1.8 -4.4 1.8 -1.8 4.4 -1.8 -4.4 -4.4 -1.8 4.4 -1.8z" fill="#fff" opacity=".9"/>';
   }
 
-
-  // Ilustraciones propias de algunos tratamientos (dentro del círculo blanco: centro 50,64, radio ~31)
+  // ---- tratamientos: ilustraciones propias dentro del medallón (centro 50,64, radio ~30) ----
+  const SK = '#F6CFA3', SKI = '#8A5A2B';
+  const miniHeart = (x, y, s) => '<g transform="translate(' + (x - 10 * s) + ' ' + (y - 9 * s) + ') scale(' + s + ')">' + P('M10 18 C2 13 0 7 4 4 C7 2 9.5 3.5 10 6 C10.5 3.5 13 2 16 4 C20 7 18 13 10 18Z', '#E8616B', '#6E1A24', 1.8 / s) + '</g>';
+  const miniBrain = (x, y, s) => '<g transform="translate(' + (x - 10 * s) + ' ' + (y - 9 * s) + ') scale(' + s + ')">' + P('M10 3 C7 0 2 2 3 6 C0 7 0 12 3 13 C3 17 8 18 10 15 C12 18 17 17 17 13 C20 12 20 7 17 6 C18 2 13 0 10 3Z', '#F2A8C4', '#7C3558', 1.8 / s) + P('M10 4 V15', null, '#7C3558', 1.2 / s) + '</g>';
   const ILLUS = {
+    swap: function () { // dos órganos que se intercambian
+      return miniHeart(35, 62, 1.35) + miniBrain(65, 66, 1.35) +
+        P('M32 46 C42 33 59 34 68 46', null, '#6A4A9C', 3.4) + P('M68 46 l-8.5 0.5 M68 46 l-1.2 -8.6', null, '#6A4A9C', 3.4) +
+        P('M68 86 C58 99 41 98 32 86', null, '#6A4A9C', 3.4) + P('M32 86 l8.5 -0.5 M32 86 l1.2 8.6', null, '#6A4A9C', 3.4);
+    },
+    steal: function () { // ladrón con antifaz que se lleva un corazón
+      return '<g stroke-linejoin="round" stroke-linecap="round">' +
+        C(46, 64, 21, SK, SKI, 2.2) + P('M25 58 C25 38 67 38 67 58Z', '#2B2540', INK, 2) + P('M27 49 H65', null, '#fff', 3, ' opacity=".8"') +
+        R(25.5, 56, 41, 11, 5, '#22232B', null, 0) + E(38, 61.5, 4.2, 3.1, '#fff') + E(54, 61.5, 4.2, 3.1, '#fff') + C(39, 62, 1.7, '#22232B') + C(55, 62, 1.7, '#22232B') +
+        P('M37 76 q9 6 18 0', null, SKI, 2.2) + miniHeart(71, 84, 1.25) + '</g>';
+    },
+    glove: function () { // guante de látex
+      const f = '#8FD3F4', ln = ' stroke="' + INK + '" stroke-width="2.1" stroke-linejoin="round"';
+      return '<g>' + R(33, 44, 8.4, 28, 4.2, f).replace('/>', ln + '/>') + R(42.6, 36, 8.4, 34, 4.2, f).replace('/>', ln + '/>') + R(52.2, 38, 8.4, 32, 4.2, f).replace('/>', ln + '/>') + R(61.8, 46, 8.4, 26, 4.2, f).replace('/>', ln + '/>') +
+        '<g transform="rotate(-38 33 78)">' + R(26, 66, 8.4, 26, 4.2, f).replace('/>', ln + '/>') + '</g>' +
+        R(33, 60, 37, 30, 9, f).replace('/>', ln + '/>') + R(36, 59, 31, 6, 0, f) + R(36, 88, 31, 12, 3, '#BFE8FA').replace('/>', ln + '/>') +
+        P('M39 50 v8 M48 44 v10 M57 46 v8', null, '#fff', 2.2, ' opacity=".6"') + P('M40 94 h25', null, '#7FC2E0', 1.4) + '</g>';
+    },
+    error: function () { // estetoscopio
+      return '<g stroke-linejoin="round" stroke-linecap="round">' + tube('M37 41 C37 53 46 57 50 63', '#2F6F7C', 4.6) + tube('M63 41 C63 53 54 57 50 63', '#2F6F7C', 4.6) + tube('M50 63 V77 C50 90 73 90 73 77', '#2F6F7C', 4.6) +
+        C(37, 38, 3.6, '#B9C3CF', INK, 1.8) + C(63, 38, 3.6, '#B9C3CF', INK, 1.8) + C(73, 71, 8.2, '#DDE2EA', INK, 2.2) + C(73, 71, 3.8, '#8C95A6', INK, 1.6) +
+        '<g transform="translate(34 84)"><circle r="7.2" fill="#fff" stroke="' + INK + '" stroke-width="1.8"/><path d="M-3.4 0 h6.8 M0 -3.4 v6.8" stroke="#E04652" stroke-width="2.8"/></g></g>';
+    },
+    overtime: function () { // despertador
+      let ticks = '';
+      for (let i = 0; i < 12; i++) { const a = (i / 12) * Math.PI * 2; ticks += '<line x1="' + (50 + Math.cos(a) * 15.5).toFixed(1) + '" y1="' + (66 + Math.sin(a) * 15.5).toFixed(1) + '" x2="' + (50 + Math.cos(a) * (i % 3 ? 18 : 19.5)).toFixed(1) + '" y2="' + (66 + Math.sin(a) * (i % 3 ? 18 : 19.5)).toFixed(1) + '" stroke="' + INK + '" stroke-width="' + (i % 3 ? 1.1 : 1.8) + '"/>'; }
+      return '<g stroke-linejoin="round" stroke-linecap="round">' + C(33, 40, 8, '#F2C230', INK, 2.2) + C(67, 40, 8, '#F2C230', INK, 2.2) + P('M46 40 h8', null, INK, 2.4) +
+        P('M37 86 L31 96 M63 86 L69 96', null, INK, 3.2) + C(50, 66, 24, '#fff', INK, 2.6) + C(50, 66, 21, null, '#D9485F', 3.4) + ticks +
+        P('M50 66 V52', null, INK, 3) + P('M50 66 L60 72', null, '#D9485F', 2.6) + C(50, 66, 2.6, INK) +
+        '<g transform="translate(76 52)"><circle r="9" fill="#1E8A91" stroke="#fff" stroke-width="1.6"/><text y="3.4" font-size="9.4" font-weight="800" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif">+2</text></g></g>';
+    },
+    second: function () { // dos médicos opinando
+      const doc = (x, cap) => C(x, 70, 12, SK, SKI, 2) + P('M' + (x - 12.5) + ' 67 C' + (x - 12) + ' 52 ' + (x + 12) + ' 52 ' + (x + 12.5) + ' 67 C' + (x + 6) + ' 62 ' + (x - 6) + ' 62 ' + (x - 12.5) + ' 67Z', cap, INK, 1.8) +
+        C(x - 4.4, 71, 1.7, '#22232B') + C(x + 4.4, 71, 1.7, '#22232B') + P('M' + (x - 3.6) + ' 77 q3.6 2.6 7.2 0', null, SKI, 1.6) + P('M' + (x - 14) + ' 96 C' + (x - 14) + ' 86 ' + (x - 6) + ' 83 ' + x + ' 83 C' + (x + 6) + ' 83 ' + (x + 14) + ' 86 ' + (x + 14) + ' 96Z', '#fff', INK, 1.8);
+      const bub = (x, ch, col) => P('M' + (x - 9) + ' 34 h18 a4 4 0 0 1 4 4 v8 a4 4 0 0 1 -4 4 h-8 l-5 6 v-6 h-5 a4 4 0 0 1 -4 -4 v-8 a4 4 0 0 1 4 -4z', '#fff', INK, 1.8) + '<text x="' + x + '" y="46.4" font-size="12" font-weight="800" text-anchor="middle" fill="' + col + '" font-family="Arial,sans-serif">' + ch + '</text>';
+      return '<g stroke-linejoin="round" stroke-linecap="round">' + doc(35, '#1E8A91') + doc(65, '#3E73D8') + bub(33, '?', '#C4560F') + bub(67, '!', '#1E8A91') + '</g>';
+    },
+    suit: function () { // traje de protección (capucha amarilla, cara dentro del visor)
+      return '<g stroke-linejoin="round" stroke-linecap="round">' + P('M24 98 C24 84 34 80 50 80 C66 80 76 84 76 98Z', '#F2C230', INK, 2.2) + P('M50 82 V98', null, INK, 1.6) + C(50, 86, 1.6, INK) +
+        C(50, 58, 27, '#F2C230', INK, 2.4) + E(50, 58, 19.5, 21, SK, SKI, 1.6) + P('M33 52 C34 42 44 38 50 38 C56 38 66 42 67 52 C62 47 56 45 50 46 C44 45 38 47 33 52Z', '#6B4A2B', null, 0) +
+        C(43.5, 58, 2, '#22232B') + C(56.5, 58, 2, '#22232B') + P('M44.6 67 q5.4 3.4 10.8 0', null, SKI, 1.7) +
+        E(50, 58, 19.5, 21, '#BFE8FA', null, 0, .42) + E(50, 58, 21.5, 23.5, null, INK, 2.2) + P('M38 44 C42 40 47 39 52 40', null, '#fff', 2.6, ' opacity=".85"') +
+        R(44, 76, 12, 6, 3, '#B9C3CF', INK, 1.6) + '</g>';
+    },
+    alien: function () { // cabeza alienígena
+      return '<g stroke-linejoin="round" stroke-linecap="round">' + P('M50 33 C33 33 25 52 31 68 C35 80 44 90 50 90 C56 90 65 80 69 68 C75 52 67 33 50 33Z', '#9BE08A', '#3E7F2E', 2.4) +
+        P('M31 55 C34 48 44 52 47 63 C40 69 32 65 31 55Z', '#1B1B26', INK, 1.4) + P('M69 55 C66 48 56 52 53 63 C60 69 68 65 69 55Z', '#1B1B26', INK, 1.4) +
+        C(39, 57, 1.8, '#fff', null, 0, .9) + C(61, 57, 1.8, '#fff', null, 0, .9) + P('M48 72 h1 M51 72 h1', null, '#3E7F2E', 2) + P('M43 79 q7 4 14 0', null, '#3E7F2E', 2) +
+        P('M40 40 q6 -4 12 -3', null, '#fff', 2.4, ' opacity=".5"') + '</g>';
+    },
+    thief: function () { // vampiro
+      return '<g stroke-linejoin="round" stroke-linecap="round">' + P('M24 98 L33 68 L50 84 L67 68 L76 98Z', '#2B1B3D', INK, 2) + P('M40 80 L50 92 L60 80 L50 86Z', '#B3283C', null, 0) +
+        E(50, 60, 17, 20, '#E9E3F2', INK, 2.2) + P('M33 56 C32 39 44 35 50 40 C56 35 68 39 67 56 C62 47 56 45 50 52 C44 45 38 47 33 56Z', '#1B1426', INK, 1.6) +
+        E(43, 60, 3.6, 2.6, '#fff', INK, 1.2) + E(57, 60, 3.6, 2.6, '#fff', INK, 1.2) + C(43, 60.4, 1.6, '#C4263A') + C(57, 60.4, 1.6, '#C4263A') + P('M38 55.5 l8 2 M62 55.5 l-8 2', null, INK, 1.8) +
+        P('M50 61 v6', null, '#9A8FB0', 1.4) + P('M43 72 q7 4 14 0', null, '#8A2A3C', 1.8) + P('M45 73 l1.6 4.4 1.6 -3.4 M52 73.6 l1.6 3.4 1.6 -4.4', '#fff', INK, .9) + '</g>';
+    },
+    failed: function () { // experimento que sale mal
+      const fl = 'M44 40 h12 v14 l18 28 c4 8 -2 15 -10 15 h-28 c-8 0 -14 -7 -10 -15 l18 -28z';
+      return '<g stroke-linejoin="round" stroke-linecap="round">' + C(40, 34, 7, '#E3E3EE', INK, 1.8) + C(52, 27, 8.4, '#E3E3EE', INK, 1.8) + C(62, 35, 6.4, '#E3E3EE', INK, 1.8) +
+        P(fl, '#fff', INK, 2.4, ' fill-opacity=".9"') + P('M30 84 c8 -5 14 3 22 0 s9 -3 14 0 l7 9 c3 5 -1 10 -7 10 h-30 c-6 0 -9 -4 -6 -10z', '#7BD66E', null, 0) + P(fl, null, INK, 2.4) +
+        C(46, 90, 2.6, '#fff', null, 0, .9) + C(58, 86, 2, '#fff', null, 0, .9) + P('M62 64 l-6 6 5 5 -7 8', null, INK, 1.9) + R(41, 36, 18, 6, 3, INK) + '</g>';
+    },
+    trick: function () { // calabaza y dulce
+      return '<g stroke-linejoin="round" stroke-linecap="round">' + E(36, 70, 13, 18, '#F08A24', INK, 2) + E(64, 70, 13, 18, '#F08A24', INK, 2) + E(50, 70, 15, 20, '#FF9F3A', INK, 2.2) +
+        P('M48 50 C48 44 52 41 56 40 L58 44 C55 45 54 47 53 50Z', '#7A4A1E', INK, 1.6) + P('M56 42 C62 38 68 40 69 45 C64 46 60 45 57 44Z', '#5AA84B', INK, 1.4) +
+        P('M40 62 l7 -2 -3 8z M60 62 l-7 -2 3 8z', '#FFE27A', INK, 1.4) + P('M40 78 l4 5 4 -4 3 5 3 -5 4 4 4 -5', '#FFE27A', INK, 1.5) +
+        '<g transform="translate(74 88) rotate(-20)"><ellipse rx="7" ry="4.6" fill="#FF6FA0" stroke="' + INK + '" stroke-width="1.5"/><path d="M-7 0 l-5 -4 v8z M7 0 l5 -4 v8z" fill="#FF6FA0" stroke="' + INK + '" stroke-width="1.4"/><path d="M-2 -4 l3 8" stroke="#fff" stroke-width="1.6"/></g></g>';
+    },
     apparition: function () { // mujer fantasma
       return '<g stroke-linejoin="round" stroke-linecap="round">' +
         '<ellipse cx="50" cy="66" rx="29" ry="30" fill="#BFD6FF" opacity=".35"/>' +
@@ -1517,7 +1677,7 @@ const Art = (function () {
         '<path d="M36 51 L64 65" stroke="#F6E6BC" stroke-width="7"/><path d="M36 51 L64 65" stroke="#D9C48C" stroke-width="1" stroke-dasharray="2 3"/>' +
         '<rect x="28.5" y="72" width="14" height="11" rx="2.4" fill="#F2C230" stroke="#6F4D22" stroke-width="1.8" transform="skewY(26) translate(0 -14.5)"/>' +
         '<path d="M31.8 68 v-3.4 a3.7 3.7 0 0 1 7.4 0 v3.4" fill="none" stroke="#6F4D22" stroke-width="1.9" transform="skewY(26) translate(0 -14.5)"/>' +
-        '<g transform="translate(64 79)"><circle r="7.4" fill="#fff" stroke="#6F4D22" stroke-width="1.4"/><text y="3.8" font-size="10.5" text-anchor="middle" font-family="Apple Color Emoji,Segoe UI Emoji,Noto Color Emoji,sans-serif">☣️</text></g></g>';
+        '<g transform="translate(64 79)"><circle r="7.4" fill="#fff" stroke="#6F4D22" stroke-width="1.4"/><text y="3.8" font-size="10.5" text-anchor="middle" font-family="' + EMOJI + '">☣️</text></g></g>';
     },
     spread: function () { // persona estornudando
       const germ = (x, y, r) => '<circle cx="' + x + '" cy="' + y + '" r="' + r + '" fill="#7FD06A" stroke="#3E7F2E" stroke-width="1"/><path d="M' + (x - r - 1.8) + ' ' + y + ' h' + 1.8 + ' M' + (x + r) + ' ' + y + ' h' + 1.8 + ' M' + x + ' ' + (y - r - 1.8) + ' v' + 1.8 + ' M' + x + ' ' + (y + r) + ' v' + 1.8 + '" stroke="#3E7F2E" stroke-width="1.3" stroke-linecap="round"/>';
@@ -1535,39 +1695,68 @@ const Art = (function () {
   };
 
   function treat(c, bg) {
-    const g = GLYPH[c.k] || '✚';
     const ring = c.k === 'thief' ? BG[c.c] : '#fff';
-    return '<circle cx="50" cy="64" r="36" fill="' + dark(bg, .25) + '" opacity=".55"/>' +
+    const body = ILLUS[c.k] ? ILLUS[c.k]() : '';
+    return '<circle cx="50" cy="64" r="37" fill="' + dark(bg, .25) + '" opacity=".5"/><circle cx="50" cy="64" r="32.5" fill="#fff" opacity=".18"/>' +
       '<circle cx="50" cy="64" r="31" fill="#fff" stroke="' + ring + '" stroke-width="' + (c.k === 'thief' ? 6 : 3) + '"/>' +
-      (ILLUS[c.k] ? ILLUS[c.k]() : '<text x="50" y="78" font-size="38" text-anchor="middle" font-family="Apple Color Emoji,Segoe UI Emoji,Noto Color Emoji,sans-serif">' + g + '</text>') +
-      '<path d="M16 100 q34 14 68 0" fill="none" stroke="#fff" stroke-width="1.6" opacity=".4"/>';
+      '<circle cx="50" cy="64" r="26.5" fill="' + light(bg, .86) + '" opacity=".85"/>' + body +
+      '<path d="M16 103 q34 14 68 0" fill="none" stroke="#fff" stroke-width="1.6" opacity=".4"/>';
   }
+
+  // ---- íconos pequeños de órgano (cinta del nombre) ----
+  function glyph(cc) {
+    const k = { red: ['M10 18 C2 13 0 7 4 4 C7 2 9.5 3.5 10 6 C10.5 3.5 13 2 16 4 C20 7 18 13 10 18Z', '#E04652'],
+      green: ['M7 1 h5 v5 c0 2 7 2 8 8 c1 5 -3 7 -8 6 c-5 -1 -9 -4 -8 -9 c1 -4 4 -3 3 -10z', '#35A363'],
+      blue: ['M10 3 C7 0 2 2 3 6 C0 7 0 12 3 13 C3 17 8 18 10 15 C12 18 17 17 17 13 C20 12 20 7 17 6 C18 2 13 0 10 3Z', '#3E73D8'] }[cc];
+    let g;
+    if (k) g = '<path d="' + k[0] + '" fill="' + k[1] + '" stroke="' + INK + '" stroke-width="1.4" stroke-linejoin="round"/>';
+    else if (cc === 'yellow') g = '<g transform="rotate(-40 10 10)"><rect x="2" y="7" width="16" height="6" rx="2" fill="#E3AE28" stroke="' + INK + '" stroke-width="1.3"/><circle cx="3" cy="7" r="3" fill="#E3AE28" stroke="' + INK + '" stroke-width="1.3"/><circle cx="3" cy="13" r="3" fill="#E3AE28" stroke="' + INK + '" stroke-width="1.3"/><circle cx="17" cy="7" r="3" fill="#E3AE28" stroke="' + INK + '" stroke-width="1.3"/><circle cx="17" cy="13" r="3" fill="#E3AE28" stroke="' + INK + '" stroke-width="1.3"/><rect x="3" y="7.8" width="14" height="4.4" fill="#E3AE28"/></g>';
+    else if (cc === 'wild') g = '<circle cx="10" cy="10" r="8" fill="#fff" stroke="' + INK + '" stroke-width="1.3"/><path d="M10 2 A8 8 0 0 1 18 10 L10 10Z" fill="' + RAINBOW[1] + '"/><path d="M18 10 A8 8 0 0 1 10 18 L10 10Z" fill="' + RAINBOW[3] + '"/><path d="M10 18 A8 8 0 0 1 2 10 L10 10Z" fill="' + RAINBOW[2] + '"/><path d="M2 10 A8 8 0 0 1 10 2 L10 10Z" fill="' + RAINBOW[0] + '"/>';
+    else if (cc === 'bionic') g = '<rect x="4" y="4" width="12" height="12" rx="3" fill="#C9D0DC" stroke="' + INK + '" stroke-width="1.3"/><circle cx="10" cy="10" r="3" fill="#E04652" stroke="' + INK + '" stroke-width="1"/>';
+    else if (cc === 'mutant') g = '<path d="M3 17 C0 8 8 8 7 4 C7 0 13 0 15 4 C17 8 12 10 13 12 C14 15 19 15 17 17Z" fill="#F0A560" stroke="' + INK + '" stroke-width="1.3"/><circle cx="9" cy="6" r="1.6" fill="#fff"/>';
+    else return '';
+    return g;
+  }
+  const icon = (cc, x, y) => { const g = glyph(cc); return g ? '<g transform="translate(' + (x - 7) + ' ' + (y - 7) + ') scale(.7)">' + g + '</g>' : ''; };
 
   // Marca de la esquina: tipo de carta y expansión
   function marks(c, bg) {
     let s = '';
-    const badge = (x, y, txt, size) => '<circle cx="' + x + '" cy="' + y + '" r="8.5" fill="#fff" stroke="' + dark(bg, .3) + '" stroke-width="1.2"/><text x="' + x + '" y="' + (y + size / 3) + '" font-size="' + size + '" text-anchor="middle" font-family="Apple Color Emoji,Segoe UI Emoji,Noto Color Emoji,sans-serif">' + txt + '</text>';
+    const badge = (x, y, txt, size) => '<circle cx="' + x + '" cy="' + y + '" r="8.5" fill="#fff" stroke="' + dark(bg, .3) + '" stroke-width="1.2"/><text x="' + x + '" y="' + (y + size / 3) + '" font-size="' + size + '" text-anchor="middle" font-family="' + EMOJI + '">' + txt + '</text>';
     if (c.t === 'o' && c.orig === 'wild') s += badge(16, 17, '🌈', 11);
     if (c.t === 'v') s += badge(16, 17, c.ev ? '☣️' : '🦠', 11);
     if (c.t === 'm') s += badge(16, 17, c.ex ? '🧪' : '💊', 11);
     if (c.ev || c.ex || (c.t === 'o' && c.c === 'bionic') || (c.t === 'x' && EVO_T.indexOf(c.k) >= 0))
       s += '<circle cx="84" cy="17" r="7.5" fill="#fff" stroke="' + dark(bg, .3) + '" stroke-width="1.2"/><text x="84" y="20.8" font-size="10" font-weight="800" text-anchor="middle" fill="#22232B" font-family="Arial,sans-serif">2</text>';
     if ((c.t === 'o' && c.c === 'mutant') || (c.t === 'x' && HALL_T.indexOf(c.k) >= 0))
-      s += '<circle cx="84" cy="17" r="7.5" fill="#fff" stroke="' + dark(bg, .3) + '" stroke-width="1.2"/><text x="84" y="20.3" font-size="9" text-anchor="middle" font-family="Apple Color Emoji,Segoe UI Emoji,Noto Color Emoji,sans-serif">🎃</text>';
+      s += '<circle cx="84" cy="17" r="7.5" fill="#fff" stroke="' + dark(bg, .3) + '" stroke-width="1.2"/><text x="84" y="20.3" font-size="9" text-anchor="middle" font-family="' + EMOJI + '">🎃</text>';
     return s;
   }
 
-  // Devuelve el <svg> completo de una carta. opt.label: nombre en cinta inferior
+  // Devuelve el <svg> completo de una carta. opt.label: nombre en la cinta inferior
+  const memo = {};
   function svg(c, opt) {
     opt = opt || {};
+    const key = [c.t, c.c, c.k, c.ev ? 1 : 0, c.ex ? 1 : 0, c.orig || '', opt.label || '', opt.marks === false ? 0 : 1].join('|');
+    if (memo[key]) return memo[key];
     const bg = bgOf(c);
     let art = '';
     if (c.t === 'o') art = organ(c, bg);
     else if (c.t === 'v') art = virus(c, bg);
     else if (c.t === 'm') art = medicine(c, bg);
     else art = treat(c, bg);
-    const label = opt.label ? '<rect x="9" y="112" width="82" height="19" rx="5" fill="#00000066"/><text x="50" y="125" font-size="' + (opt.label.length > 15 ? 8.4 : 10) + '" font-weight="700" text-anchor="middle" fill="#fff" font-family="Public Sans,Arial,sans-serif">' + opt.label + '</text>' : '';
-    return '<svg viewBox="0 0 100 140" xmlns="http://www.w3.org/2000/svg" role="img" aria-hidden="true" class="cardsvg">' + frame(c, bg) + art + (opt.marks === false ? '' : marks(c, bg)) + label + '</svg>';
+    let label = '';
+    if (opt.label) {
+      const ic = (c.t !== 'x') ? icon(c.c, 19, 121.5) : '';
+      const L = opt.label, n = L.length, fs = ic ? (n <= 9 ? 10 : n <= 12 ? 8.4 : n <= 15 ? 7.4 : 6.8) : (n > 15 ? 8.4 : 10);
+      label = '<rect x="9" y="111" width="82" height="21" rx="6" fill="#00000066"/>' +
+        (ic ? '<circle cx="19.5" cy="121.5" r="7.6" fill="#fff"/>' + ic : '') +
+        '<text x="' + (ic ? 57.5 : 50) + '" y="' + (121.5 + fs * .36).toFixed(1) + '" font-size="' + fs + '" font-weight="700" text-anchor="middle" fill="#fff" font-family="Public Sans,Arial,sans-serif">' + L + '</text>';
+    }
+    const out = '<svg viewBox="0 0 100 140" xmlns="http://www.w3.org/2000/svg" role="img" aria-hidden="true" class="cardsvg">' + frame(c, bg) + art + (opt.marks === false ? '' : marks(c, bg)) + label + '</svg>';
+    if (Object.keys(memo).length > 400) { for (const k in memo) delete memo[k]; }
+    memo[key] = out;
+    return out;
   }
 
   return { svg, bgOf };
@@ -2300,10 +2489,11 @@ if (typeof module !== 'undefined') module.exports = Bot;
     const pips = '<span class="pips" aria-label="' + h + ' de ' + goal + ' órganos sanos">' + Array.from({ length: goal }, (_, i) => '<b class="' + (i < h ? 'on' : '') + '"></b>').join('') + '</span>';
     const cnt = mine ? '' : '<span class="cnt" aria-label="' + (g.hands[pid] || []).length + ' cartas en mano"><i></i>' + (g.hands[pid] || []).length + '</span>';
     const idle = !!(g.idle && g.idle[pid] >= 2);
-    const curse = E.cursed(g, pid) ? '<span class="curse" title="Truco o trato: no puede ganar">🎃</span>' : '';
+    // Truco o trato: la carta maldita (la calabaza) se muestra junto al nombre de quien no puede ganar
+    const curse = E.cursed(g, pid) ? '<span class="curse" role="img" aria-label="Truco o trato: no puede ganar" title="Truco o trato: no puede ganar">' + (g.curse.card ? Art.svg(g.curse.card, { marks: false }) : '🎃') + '</span>' : '';
     const organs = body.length ? body.map((sl, i) => organTile(sl, pid, i, mine ? 'lg' : 'sm')).join('') : '<span class="empty">Sin órganos</span>';
     return '<div data-seat="' + esc(pid) + '" class="seat ' + (pos === 'left' || pos === 'right' ? 'side ' : '') + (idle ? 'idle ' : '') + (turn ? 'turn ' : '') + (errT ? 'target' : '') + '"' + (errT ? ' data-act="player" data-p="' + esc(pid) + '"' : '') + '>' +
-      '<div class="plate"><span class="av" style="--av:' + col + '">' + (pl.av || shortName(pid).charAt(0)) + '</span><span class="who"><span class="nm">' + (mine ? 'Tú' : esc(shortName(pid))) + (pl.bot ? ' <small>🤖</small>' : '') + (idle ? ' <small title="Lleva varios turnos sin jugar">💤</small>' : '') + curse + '</span><span class="sub">' + cnt + pips + '</span></span></div>' +
+      '<div class="plate"><span class="av" style="--av:' + col + '">' + (pl.av || shortName(pid).charAt(0)) + '</span><span class="who"><span class="nm">' + (mine ? 'Tú' : esc(shortName(pid))) + (pl.bot ? ' <small>🤖</small>' : '') + (idle ? ' <small title="Lleva varios turnos sin jugar">💤</small>' : '') + '</span><span class="sub">' + cnt + pips + '</span></span>' + curse + '</div>' +
       '<div class="obody">' + organs + '</div></div>';
   }
 
