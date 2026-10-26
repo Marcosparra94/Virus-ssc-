@@ -6,7 +6,7 @@
 <title>Virus!</title>
 <meta name="description" content="Virus! el juego de cartas, en línea y sin cuentas">
 <meta name="theme-color" content="#0F473A">
-<script>window.VIRUS_BUILD='25-oct 18:24';</script>
+<script>window.VIRUS_BUILD='25-oct 21:34';</script>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -111,8 +111,8 @@ details.rules p { margin: 8px 0; }
 .copybox { margin-top: 8px; width: 100%; padding: 10px; border-radius: 8px; border: 1.5px solid var(--line); background: var(--bg); color: var(--ink); font: inherit; font-size: 13px; }
 .pl { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .av.sm { width: 30px; height: 30px; font-size: 17px; }
-.avgrid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
-.avbtn { aspect-ratio: 1; font-size: 24px; border-radius: 12px; border: 2px solid var(--line); background: var(--bg); display: grid; place-items: center; padding: 0; }
+.avgrid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 5px; }
+.avbtn { aspect-ratio: 1; font-size: 24px; border-radius: 50%; border: 2px solid var(--line); background: var(--bg); display: grid; place-items: center; padding: 1px; overflow: hidden; }
 .avbtn.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, var(--bg)); }
 .avbtn[disabled] { opacity: .3; cursor: default; }
 .opts { display: grid; gap: 8px; }
@@ -320,6 +320,16 @@ details.log div { padding: 2px 0; }
 .seat.side .curse { margin: 2px 0 -2px; transform: rotate(-4deg); }
 @media (prefers-reduced-motion: no-preference) { .curse { animation: cursepulse 2.2s ease-in-out infinite; } }
 @keyframes cursepulse { 0%, 100% { box-shadow: 0 0 0 2px #FF9F3A, 0 0 8px rgba(255, 159, 58, .6); } 50% { box-shadow: 0 0 0 2px #FFC46B, 0 0 16px rgba(255, 159, 58, 1); } }
+
+/* ---- avatares dibujados ---- */
+.avsvg { display: block; width: 100%; height: 100%; }
+.av { overflow: hidden; }
+.avbtn .avsvg { border-radius: 50%; }
+.avbtn.on { box-shadow: 0 0 0 2px var(--accent); }
+.fxav { display: inline-block; width: 20px; height: 20px; vertical-align: middle; }
+.sav { width: 26px; height: 26px; flex: none; display: block; }
+.hav { width: 24px; height: 24px; display: block; }
+.fx-cap .fxav { display: inline-block; opacity: 1; font-size: inherit; margin-right: 2px; }
 
 </style>
 </head>
@@ -1763,6 +1773,176 @@ const Art = (function () {
 })();
 
 
+/* Avatares: 40 personajes originales dibujados en SVG (cada uno cabe en un círculo de 100x100). */
+const Avatars = (function () {
+const INK = '#2B2540';
+const S = (w) => ' stroke="' + INK + '" stroke-width="' + (w || 2.4) + '" stroke-linejoin="round" stroke-linecap="round"';
+const P = (d, f, w, extra) => '<path d="' + d + '" fill="' + (f || 'none') + '"' + (f === null ? '' : S(w)) + (extra || '') + '/>';
+const L = (d, w, col) => '<path d="' + d + '" fill="none" stroke="' + (col || INK) + '" stroke-width="' + (w || 2.4) + '" stroke-linecap="round" stroke-linejoin="round"/>';
+const C = (x, y, r, f, w) => '<circle cx="' + x + '" cy="' + y + '" r="' + r + '" fill="' + f + '"' + (w === 0 ? '' : S(w)) + '/>';
+const E = (x, y, rx, ry, f, w) => '<ellipse cx="' + x + '" cy="' + y + '" rx="' + rx + '" ry="' + ry + '" fill="' + f + '"' + (w === 0 ? '' : S(w)) + '/>';
+const R = (x, y, w, h, r, f, sw) => '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + r + '" fill="' + f + '"' + (sw === 0 ? '' : S(sw)) + '/>';
+const eye = (x, y, r) => { r = r || 4.4; return C(x, y, r, '#fff', 1.7) + C(x + r * .15, y + r * .15, r * .52, INK, 0) + C(x + r * .3, y - r * .05, r * .17, '#fff', 0); };
+const dot = (x, y, r) => C(x, y, r || 2.2, INK, 0);
+const smile = (x, y, w, d) => L('M' + (x - w) + ' ' + y + ' Q' + x + ' ' + (y + (d || 8)) + ' ' + (x + w) + ' ' + y, 2.4);
+const blush = (x1, x2, y) => C(x1, y, 3.4, '#FF8FA3', 0).replace('/>', ' opacity=".6"/>') + C(x2, y, 3.4, '#FF8FA3', 0).replace('/>', ' opacity=".6"/>');
+const star = (x, y, r, f) => { let d = ''; for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * .45 : r; d += (i ? 'L' : 'M') + (x + Math.cos(a) * rr).toFixed(1) + ' ' + (y + Math.sin(a) * rr).toFixed(1); } return P(d + 'Z', f, 1.6); };
+
+const AV = [
+  { n: 'Ajolote', bg: '#BFE8FA', d: () => {
+    let g = '';
+    [-1, 1].forEach(sd => [-42, -6, 30].forEach(ang => {
+      const a = ang * Math.PI / 180, x1 = 50 + sd * 25, y1 = 56, x2 = x1 + sd * Math.cos(a) * 22, y2 = y1 + Math.sin(a) * 22;
+      g += L('M' + x1 + ' ' + y1 + ' L' + x2.toFixed(1) + ' ' + y2.toFixed(1), 7.6, INK) + L('M' + x1 + ' ' + y1 + ' L' + x2.toFixed(1) + ' ' + y2.toFixed(1), 4, '#F26B8A') + E(x2.toFixed(1), y2.toFixed(1), 4.4, 4.4, '#E8607E', 2);
+    }));
+    return g + E(50, 58, 28, 24, '#F9B6C9') + C(40, 52, 3.4, INK, 0) + C(60, 52, 3.4, INK, 0) + C(41, 51, 1.1, '#fff', 0) + C(61, 51, 1.1, '#fff', 0) + smile(50, 62, 11, 8) + blush(32, 68, 62) + C(40, 70, 1.6, '#E8A0B4', 0) + C(61, 71, 1.6, '#E8A0B4', 0) + C(50, 46, 1.6, '#E8A0B4', 0);
+  } },
+  { n: 'Luchador', bg: '#F2C230', d: () =>
+    P('M18 96 C18 74 34 70 50 70 C66 70 82 74 82 96Z', '#3E73D8') + C(50, 50, 25, '#D9485F') + star(50, 33, 9, '#FFD84D') +
+    P('M33 50 Q40 41 47 51 Q40 56 33 50Z', '#fff', 1.8) + P('M67 50 Q60 41 53 51 Q60 56 67 50Z', '#fff', 1.8) + dot(41, 50, 2.2) + dot(59, 50, 2.2) +
+    E(50, 64, 9, 6.5, '#F6CFA3', 2) + L('M44 64 Q50 69 56 64', 2) + L('M50 25 V70', 1.4, '#9E2A3B') },
+  { n: 'Taco', bg: '#FFD58A', d: () =>
+    P('M16 62 q2 -16 10 -10 q4 -16 12 -6 q5 -16 12 -6 q6 -16 12 -4 q6 -14 12 -2 q8 -6 8 12 q4 4 0 14Z', '#6BC36B', 2.2) + C(34, 46, 3.6, '#E04652', 1.5) + C(60, 40, 3.6, '#E04652', 1.5) + C(72, 52, 3, '#FFE27A', 1.4) +
+    P('M12 74 A38 38 0 0 1 88 74Z', '#F6D36B') + L('M16 70 A34 34 0 0 1 84 70', 1.6, '#D9A93B') + eye(40, 62, 4.6) + eye(60, 62, 4.6) + smile(50, 69, 8, 7) + blush(31, 69, 69) },
+  { n: 'Aguacate', bg: '#D8F0C0', d: () =>
+    P('M50 8 C63 8 69 26 73 42 C79 64 69 92 50 92 C31 92 21 64 27 42 C31 26 37 8 50 8Z', '#4F9B45') + P('M50 15 C60 15 64 30 68 44 C73 63 65 85 50 85 C35 85 27 63 32 44 C36 30 40 15 50 15Z', '#C9E27A', 1.8) +
+    C(50, 66, 13, '#8A5A2B') + C(45, 62, 3.4, '#B98048', 0) + eye(43, 42, 4.2) + eye(57, 42, 4.2) + smile(50, 50, 7, 6) + blush(37, 63, 50) },
+  { n: 'Pizza', bg: '#FFE0B2', d: () =>
+    P('M50 92 L16 30 Q50 14 84 30Z', '#F6C85F') + P('M16 30 Q50 14 84 30', null, 8, ' stroke="#C98A3A" stroke-width="8"') + L('M16 30 Q50 14 84 30', 2.4) +
+    C(34, 40, 5.4, '#E04652', 1.8) + C(62, 38, 5, '#E04652', 1.8) + C(50, 70, 5.2, '#E04652', 1.8) + eye(42, 52, 4.2) + eye(58, 52, 4.2) + smile(50, 59, 6, 6) + P('M40 66 q2 7 5 0', '#FFE27A', 1.4) },
+  { n: 'Dona', bg: '#C8E6FF', d: () =>
+    C(50, 52, 36, '#E8A862') + P('M50 20 q10 -2 14 4 q12 -2 16 10 q8 8 2 18 q4 12 -6 20 q-4 10 -14 8 q-8 8 -18 2 q-12 2 -16 -8 q-10 -8 -4 -18 q-6 -12 4 -20 q4 -10 14 -8 q4 -6 8 -8Z', '#FF8FB1') +
+    C(50, 52, 10.5, '#C8E6FF') + eye(33, 44, 4) + eye(67, 44, 4) + smile(50, 74, 8, 6) +
+    [[32, 30, 20, '#fff'], [58, 28, -30, '#FFE27A'], [72, 40, 40, '#6BC3F2'], [26, 58, -50, '#FFE27A'], [74, 62, 10, '#fff'], [40, 78, 60, '#6BC3F2'], [62, 78, -20, '#fff'], [50, 30, 80, '#8EE08E']].map(([x, y, a, c]) => '<rect x="' + (x - 4) + '" y="' + (y - 1.5) + '" width="8" height="3.2" rx="1.6" fill="' + c + '" transform="rotate(' + a + ' ' + x + ' ' + y + ')"/>').join('') },
+  { n: 'Astronauta', bg: '#2B3A67', d: () =>
+    [[14, 16], [84, 24], [20, 80], [86, 74], [70, 10]].map(([x, y]) => star(x, y, 3.4, '#FFE27A')).join('') + P('M24 98 C24 78 36 72 50 72 C64 72 76 78 76 98Z', '#E9EEF7') + C(50, 50, 31, '#F4F7FC') + E(50, 50, 22, 19, '#1E2A4F') + P('M36 42 Q42 36 50 36', null, 3, ' stroke="#fff" stroke-width="3" opacity=".6"') +
+    C(43, 50, 3.2, '#9BE0FF', 0) + C(57, 50, 3.2, '#9BE0FF', 0) + L('M44 58 Q50 63 56 58', 2.2, '#9BE0FF') + C(20, 50, 4.4, '#D4DAE6') + C(80, 50, 4.4, '#D4DAE6') + R(44, 76, 12, 8, 2, '#E04652', 1.8) },
+  { n: 'Robot', bg: '#D4DAE8', d: () =>
+    L('M50 24 V14', 3) + C(50, 12, 4.6, '#E04652') + R(22, 56, 6, 14, 3, '#8C95A6') + R(72, 56, 6, 14, 3, '#8C95A6') + R(26, 24, 48, 56, 11, '#A6B8CC') + R(31, 32, 38, 20, 6, '#1E2A4F') +
+    C(42, 42, 5.4, '#7BE8FF', 0) + C(58, 42, 5.4, '#7BE8FF', 0) + C(42, 41, 1.8, '#fff', 0) + C(58, 41, 1.8, '#fff', 0) + R(36, 60, 28, 12, 4, '#fff', 1.8) + L('M42 60 V72 M50 60 V72 M58 60 V72', 1.4) + C(31, 76, 1.6, INK, 0) + C(69, 76, 1.6, INK, 0) },
+  { n: 'Gato pirata', bg: '#8ED1E8', d: () =>
+    P('M26 40 L30 18 L44 32Z', '#F2A65A') + P('M74 40 L70 18 L56 32Z', '#F2A65A') + C(50, 58, 28, '#F2A65A') + P('M24 46 C30 28 70 28 76 46 C64 40 36 40 24 46Z', '#E04652') + L('M24 46 L18 54 M24 46 L16 42', 2.6, INK) +
+    L('M27 46 L70 62', 2.2) + E(40, 55, 7.4, 6.2, '#22232B', 1.6) + eye(61, 54, 4.6) + E(50, 65, 3.2, 2.4, '#FF8FA3', 1.4) + L('M50 67 V70 M50 70 Q45 74 41 70 M50 70 Q55 74 59 70', 1.8) + L('M22 62 H34 M22 68 L34 66 M78 62 H66 M78 68 L66 66', 1.4) + C(78, 72, 3.2, '#FFD84D', 1.6) },
+  { n: 'Mago', bg: '#CDBDF2', d: () =>
+    C(50, 62, 17, '#F6CFA3') + P('M33 66 Q34 94 50 96 Q66 94 67 66 Q58 72 50 70 Q42 72 33 66Z', '#fff') + E(50, 70, 8, 3.6, '#EDEDF5', 1.6) + P('M24 46 Q50 38 76 46 Q76 52 50 50 Q24 52 24 46Z', '#4B2E83') + P('M31 46 L52 6 L70 46Z', '#6A4A9C') + star(50, 30, 5, '#FFE27A') + C(60, 20, 2, '#FFE27A', 0) + C(40, 36, 1.6, '#FFE27A', 0) +
+    eye(43, 56, 3.2) + eye(57, 56, 3.2) + C(50, 61, 3, '#F0B890', 1.4) + P('M32 60 q-8 4 -2 10', null, 1) },
+  { n: 'Dragoncito', bg: '#FFC9A0', d: () =>
+    P('M30 38 L36 14 L44 34Z', '#FFF1C8') + P('M70 38 L64 14 L56 34Z', '#FFF1C8') + P('M42 30 L46 18 L50 28 L54 18 L58 30Z', '#E8804A', 1.8) + E(50, 56, 29, 25, '#4FB35E') + E(50, 68, 17, 12, '#9BE08A') + dot(44, 67, 1.8) + dot(56, 67, 1.8) + L('M42 74 Q50 79 58 74', 2) +
+    eye(38, 50, 5.2) + eye(62, 50, 5.2) + C(30, 62, 2.4, '#3E9B4C', 0) + C(70, 62, 2.4, '#3E9B4C', 0) + P('M60 64 q8 -6 12 2 q-6 -1 -4 5 q-6 -4 -8 -7Z', '#FF9F3A', 1.4) },
+  { n: 'Pulpo', bg: '#CDEBFF', d: () =>
+    P('M22 66 C20 80 14 86 20 90 C26 92 30 84 30 76 C30 90 32 94 38 92 C44 90 42 82 42 76 C44 92 52 94 56 90 C60 86 56 82 58 76 C60 86 68 94 74 90 C80 86 76 80 70 74 C74 80 80 90 84 86 C88 80 80 72 78 66Z', '#A06CD5') + E(50, 44, 30, 28, '#B78AE6') + C(34, 30, 4.4, '#CDA8F2', 0) + C(60, 24, 3, '#CDA8F2', 0) + C(70, 36, 3.6, '#CDA8F2', 0) +
+    eye(40, 48, 5.6) + eye(60, 48, 5.6) + smile(50, 58, 7, 6) + blush(31, 69, 56) + C(30, 82, 2, '#fff', 0) + C(40, 90, 2, '#fff', 0) },
+  { n: 'Cactus con lentes', bg: '#FFE5B4', d: () =>
+    L('M34 56 H20 V40', 11, INK) + L('M34 56 H20 V40', 7, '#4FA85C') + L('M66 50 H80 V34', 11, INK) + L('M66 50 H80 V34', 7, '#4FA85C') + R(34, 14, 32, 66, 16, '#4FA85C') + L('M44 24 V34 M56 30 V42 M44 60 V70 M58 62 V72', 1.6, '#2F7A3C') +
+    R(36, 40, 12, 9, 3, '#22232B', 1.6) + R(52, 40, 12, 9, 3, '#22232B', 1.6) + L('M48 43 H52', 2) + L('M39 42.5 L43 42.5', 1.4, '#fff') + smile(50, 58, 6, 6) + C(50, 12, 5, '#FF7AA8', 1.8) + C(50, 12, 2, '#FFE27A', 0) + P('M32 80 H68 L64 94 H36Z', '#D9774B') + R(30, 78, 40, 6, 2, '#E8895E') },
+  { n: 'Hongo', bg: '#D9F2D0', d: () =>
+    R(35, 48, 30, 40, 9, '#F7EBD3') + P('M12 56 C12 22 88 22 88 56 Q50 64 12 56Z', '#E04652') + C(30, 40, 6, '#fff', 0) + C(52, 32, 7, '#fff', 0) + C(72, 42, 5.4, '#fff', 0) + C(22, 52, 3, '#fff', 0) + C(80, 54, 3, '#fff', 0) +
+    eye(43, 66, 4) + eye(57, 66, 4) + smile(50, 73, 6, 6) + blush(37, 63, 72) },
+  { n: 'Fantasma', bg: '#3C3A6E', d: () =>
+    [[16, 20], [82, 16], [84, 74], [14, 78]].map(([x, y]) => star(x, y, 3.2, '#FFE27A')).join('') + P('M22 90 V46 C22 18 78 18 78 46 V90 L68 80 L59 90 L50 80 L41 90 L32 80Z', '#F6F9FF') + E(41, 46, 4.4, 6, '#2A2440', 0) + E(59, 46, 4.4, 6, '#2A2440', 0) + C(42.4, 43.6, 1.4, '#fff', 0) + C(60.4, 43.6, 1.4, '#fff', 0) +
+    E(50, 60, 4.4, 5.4, '#2A2440', 0) + blush(32, 68, 56) + L('M22 62 q-8 4 -6 12 M78 62 q8 4 6 12', 3, '#CFD8F0') },
+  { n: 'Alien', bg: '#2D3F7A', d: () =>
+    [[14, 22], [86, 18], [16, 74], [84, 78], [50, 8]].map(([x, y]) => star(x, y, 2.8, '#FFE27A')).join('') + L('M40 26 L34 10 M60 26 L66 10', 2.6) + C(34, 10, 4.4, '#FF7AA8', 1.8) + C(66, 10, 4.4, '#FF7AA8', 1.8) +
+    P('M50 20 C28 20 22 46 30 66 C35 80 44 88 50 88 C56 88 65 80 70 66 C78 46 72 20 50 20Z', '#9BE08A') + P('M28 46 C32 40 44 44 47 56 C40 62 29 58 28 46Z', '#1B1B26', 1.8) + P('M72 46 C68 40 56 44 53 56 C60 62 71 58 72 46Z', '#1B1B26', 1.8) + C(38, 50, 2, '#fff', 0) + C(62, 50, 2, '#fff', 0) + smile(50, 72, 8, 6) },
+  { n: 'Zombi', bg: '#C9D6B5', d: () =>
+    P('M24 44 L28 28 L36 34 L42 22 L52 32 L60 20 L66 34 L74 28 L76 44Z', '#3A3F2E', 1.8) + R(26, 36, 48, 52, 12, '#A8C98A') + L('M30 46 L70 46', 1.6, '#6B8F58') + L('M40 42 V50 M50 42 V50 M60 42 V50', 1.4, '#6B8F58') +
+    eye(40, 58, 6.2) + L('M57 54 L67 64 M67 54 L57 64', 2.6) + L('M38 76 Q50 70 62 78', 2.4) + L('M44 74 V80 M50 73 V81 M56 75 V81', 1.6) + C(33, 68, 2.6, '#8FB070', 0) + C(68, 76, 2.2, '#8FB070', 0) },
+  { n: 'Cangrejo', bg: '#BFE8FA', d: () =>
+    L('M26 74 L14 82 M30 78 L22 90 M74 74 L86 82 M70 78 L78 90', 3.4) + L('M32 56 L22 40 M68 56 L78 40', 3.6) + P('M10 30 A11 11 0 0 1 24 20 L21 30 L28 32 A11 11 0 0 1 14 40Z', '#E8505B') + P('M90 30 A11 11 0 0 0 76 20 L79 30 L72 32 A11 11 0 0 0 86 40Z', '#E8505B') +
+    E(50, 64, 28, 20, '#E8505B') + L('M42 48 V42 M58 48 V42', 3) + C(42, 38, 6, '#fff') + C(58, 38, 6, '#fff') + dot(43, 39, 2.4) + dot(59, 39, 2.4) + smile(50, 66, 9, 8) + blush(34, 66, 66) },
+  { n: 'Vaquero', bg: '#F6C58E', d: () =>
+    P('M26 92 C26 76 38 72 50 72 C62 72 74 76 74 92Z', '#E04652') + C(50, 58, 20, '#F6CFA3') + E(50, 38, 38, 8, '#9A6A3A') + P('M30 38 C30 14 70 14 70 38Z', '#B07A44') + R(30, 30, 40, 7, 0, '#6B4423', 1.6) + star(50, 33.5, 3, '#FFD84D') +
+    eye(42, 56, 3.6) + eye(58, 56, 3.6) + P('M38 66 Q50 62 62 66 Q56 72 50 69 Q44 72 38 66Z', '#4A3322', 1.6) + smile(50, 73, 5, 4) + L('M36 48 q4 -3 7 -1 M64 48 q-4 -3 -7 -1', 1.8) },
+  { n: 'Sandía', bg: '#D5F5E3', d: () =>
+    P('M8 26 A42 60 0 0 0 92 26Z', '#4FA85C') + P('M13 26 A37 54 0 0 0 87 26Z', '#F2F2D0', 1.6) + P('M17 26 A33 49 0 0 0 83 26Z', '#F25C6B', 1.6) + E(50, 26, 42, 5.6, '#F25C6B', 2.4) +
+    [[30, 54], [70, 54], [40, 70], [60, 70]].map(([x, y]) => '<path d="M' + x + ' ' + (y - 4.4) + ' q4.4 3.4 0 9 q-4.4 -5.6 0 -9Z" fill="' + INK + '"/>').join('') + eye(41, 41, 4.4) + eye(59, 41, 4.4) + smile(50, 50, 7, 6) + blush(33, 67, 49) },
+  { n: 'Llama', bg: '#FFD9E8', d: () =>
+    E(38, 24, 5, 12, '#F4E7D2') + E(62, 24, 5, 12, '#F4E7D2') + E(38, 26, 2.4, 7, '#FFB3C6', 0) + E(62, 26, 2.4, 7, '#FFB3C6', 0) +
+    [[26, 90], [38, 94], [50, 95], [62, 94], [74, 90]].map(([x, y]) => C(x, y, 11, '#fff')).join('') + E(50, 62, 19, 26, '#F4E7D2') +
+    [[40, 34], [50, 30], [60, 34], [45, 39], [55, 39]].map(([x, y]) => C(x, y, 7, '#fff')).join('') + E(50, 75, 11, 8, '#F2CFC0') + dot(46, 74, 1.4) + dot(54, 74, 1.4) + L('M46 79 Q50 82 54 79', 1.8) +
+    eye(42, 58, 3.8) + eye(58, 58, 3.8) + blush(35, 65, 67) + R(38, 88, 24, 5, 2, '#E04652', 1.4) },
+  { n: 'Ninja', bg: '#9AA7C7', d: () =>
+    P('M76 38 L92 30 L88 40 L94 47 L78 45Z', '#E04652', 1.6) + P('M20 98 C20 78 34 72 50 72 C66 72 80 78 80 98Z', '#2B2B3A') + C(50, 54, 28, '#2B2B3A') + R(27, 44, 46, 18, 9, '#F6CFA3') + R(22, 34, 56, 9, 2, '#E04652') + star(50, 38.5, 3.4, '#FFD84D') +
+    eye(40, 53, 4.4) + eye(60, 53, 4.4) + L('M32 46 L46 50 M68 46 L54 50', 2.8) + star(16, 82, 7, '#B9C3CF') + star(86, 84, 5, '#B9C3CF') },
+  { n: 'Calavera', bg: '#F2A33A', d: () =>
+    R(34, 64, 32, 26, 9, '#fff') + E(50, 50, 27, 25, '#fff') + C(39, 50, 8.6, '#2B2540', 0) + C(61, 50, 8.6, '#2B2540', 0) + C(39, 50, 5.2, '#FF5E8A', 0) + C(61, 50, 5.2, '#FF5E8A', 0) + C(39, 50, 2.2, '#2B2540', 0) + C(61, 50, 2.2, '#2B2540', 0) +
+    P('M50 58 L45 66 L55 66Z', '#2B2540', 1.4) + L('M38 77 H62 M44 72 V86 M50 72 V86 M56 72 V86', 1.8) + C(50, 36, 2.8, '#6BC3F2', 1.4) + C(42, 34, 1.6, '#FF5E8A', 0) + C(58, 34, 1.6, '#FF5E8A', 0) + L('M33 62 q3 -4 6 0 M61 62 q3 -4 6 0', 1.6, '#FF5E8A') +
+    [[26, 30, '#FF5E8A'], [38, 20, '#FFD84D'], [50, 17, '#FF5E8A'], [62, 20, '#FFD84D'], [74, 30, '#FF5E8A']].map(([x, y, c]) => C(x, y, 7.4, c, 1.8) + C(x, y, 2.4, '#fff', 0)).join('') },
+  { n: 'Pingüino', bg: '#BFE8FA', d: () =>
+    E(36, 93, 9, 5, '#FF9F3A') + E(64, 93, 9, 5, '#FF9F3A') + P('M25 52 q-14 16 -5 32 q9 -8 11 -28Z', '#2B3A67') + P('M75 52 q14 16 5 32 q-9 -8 -11 -28Z', '#2B3A67') + E(50, 58, 26, 33, '#2B3A67') + E(50, 68, 17, 22, '#fff') +
+    C(41, 44, 6.4, '#fff') + C(59, 44, 6.4, '#fff') + dot(42, 45, 2.6) + dot(58, 45, 2.6) + P('M43 52 L57 52 L50 62Z', '#FF9F3A') + blush(33, 67, 55) + R(30, 62, 40, 7, 3.4, '#E04652', 1.8) },
+  { n: 'Unicornio', bg: '#FFD1F0', d: () => {
+    const ring = (d, c) => L(d, 8, INK) + L(d, 5, c);
+    return ring('M36 34 C14 40 12 68 24 88', '#B58AE8') + ring('M34 38 C20 46 20 66 28 80', '#FF7AA8') + ring('M64 34 C86 40 88 68 76 88', '#6BC3F2') + ring('M66 38 C80 46 80 66 72 80', '#B58AE8') +
+      P('M33 40 L34 24 L44 34Z', '#fff') + P('M67 40 L66 24 L56 34Z', '#fff') + E(50, 60, 22, 25, '#fff') + P('M50 4 L43 36 L57 36Z', '#FFD84D', 2) + L('M46 24 L54 20 M45 30 L55 26', 1.4) +
+      L('M36 56 Q41 51 46 56 M54 56 Q59 51 64 56', 2.4) + L('M35 56 l-2 -2 M65 56 l2 -2', 1.6) + E(50, 72, 12, 8, '#FFC3DA') + dot(46, 72, 1.4) + dot(54, 72, 1.4) + smile(50, 76, 4, 3) + blush(35, 65, 66) + star(50, 43, 3.2, '#FF7AA8'); } },
+  { n: 'Búho', bg: '#E8D9B5', d: () =>
+    P('M26 38 L28 14 L42 30Z', '#9A6A3A') + P('M74 38 L72 14 L58 30Z', '#9A6A3A') + E(50, 58, 29, 33, '#9A6A3A') + E(50, 70, 17, 20, '#E8C99A', 1.6) + L('M41 68 l4 4 l4 -4 M51 68 l4 4 l4 -4 M46 78 l4 4 l4 -4', 1.6, '#B98048') +
+    C(39, 48, 11.4, '#fff') + C(61, 48, 11.4, '#fff') + C(40, 49, 5, INK, 0) + C(60, 49, 5, INK, 0) + C(41.6, 47.4, 1.6, '#fff', 0) + C(61.6, 47.4, 1.6, '#fff', 0) + L('M50 48 H50', 1) + C(39, 48, 13.4, 'none', 2) + C(61, 48, 13.4, 'none', 2) + L('M52.4 48 H47.6', 2) + P('M45 57 L55 57 L50 65Z', '#FFB23F', 1.8) },
+  { n: 'Cerdito', bg: '#FFE0E0', d: () =>
+    P('M25 42 L22 20 L43 32Z', '#FF9FB5') + P('M75 42 L78 20 L57 32Z', '#FF9FB5') + C(50, 56, 29, '#FFB3C6') + E(50, 66, 14, 10, '#FF8FA9') + E(45, 66, 2.3, 3.6, '#B84A66', 0) + E(55, 66, 2.3, 3.6, '#B84A66', 0) +
+    eye(38, 49, 4.6) + eye(62, 49, 4.6) + blush(30, 70, 59) + L('M42 76 Q50 80 58 76', 2) },
+  { n: 'Rana', bg: '#E3F5C8', d: () =>
+    E(50, 66, 34, 24, '#5CC96B') + C(33, 42, 13, '#5CC96B') + C(67, 42, 13, '#5CC96B') + C(33, 42, 9.6, '#fff', 1.8) + C(67, 42, 9.6, '#fff', 1.8) + C(34, 43, 4.6, INK, 0) + C(66, 43, 4.6, INK, 0) + C(35.4, 41.4, 1.4, '#fff', 0) + C(67.4, 41.4, 1.4, '#fff', 0) +
+    P('M41 32 L42 19 L46 27 L50 17 L54 27 L58 19 L59 32Z', '#FFD84D', 1.8) + dot(44, 58, 1.6) + dot(56, 58, 1.6) + L('M26 68 Q50 88 74 68', 2.6) + E(50, 79, 6.4, 4, '#FF7A8A', 1.6) + blush(28, 72, 69) },
+  { n: 'Helado', bg: '#D8F0FF', d: () =>
+    P('M30 58 L50 97 L70 58Z', '#E8B96B') + L('M38 66 L62 66 M42 76 L58 76 M46 86 L54 86 M38 58 L54 92 M50 58 L42 90 M62 58 L48 92', 1.4, '#B98048') +
+    C(50, 30, 17, '#FF9EC0') + [[40, 24], [54, 20], [60, 32], [44, 34]].map(([x, y], i) => '<rect x="' + (x - 3) + '" y="' + (y - 1) + '" width="6" height="2.6" rx="1.3" fill="' + ['#fff', '#FFE27A', '#6BC3F2', '#8EE08E'][i] + '" transform="rotate(' + (i * 40 - 30) + ' ' + x + ' ' + y + ')"/>').join('') +
+    C(50, 52, 23, '#8FE3C9') + [[32, 70], [50, 73], [68, 70]].map(([x, y]) => C(x, y, 5.6, '#8FE3C9')).join('') + C(50, 55, 22, '#8FE3C9', 0) + C(50, 8, 5.4, '#E04652') + L('M50 3 q2 -6 8 -6', 2) +
+    eye(42, 50, 4.2) + eye(58, 50, 4.2) + smile(50, 58, 6, 5) + blush(35, 65, 57) },
+  { n: 'Hamburguesa', bg: '#FFE6B0', d: () =>
+    P('M14 78 H86 Q86 92 72 92 H28 Q14 92 14 78Z', '#E8A04A') + R(14, 68, 72, 11, 5.5, '#7A4A2B') + P('M16 66 L50 82 L84 66Z', '#FFD84D', 1.6) + P('M12 64 q8 -9 14 0 q8 -9 14 0 q8 -9 14 0 q8 -9 14 0 q8 -9 14 0 V66 H12Z', '#6BC36B', 2) + R(18, 56, 64, 8, 3, '#E04652', 1.8) +
+    P('M13 56 C13 16 87 16 87 56Z', '#E8A04A') + [[28, 28, 20], [70, 30, -30], [50, 22, 70], [78, 46, 10], [22, 46, -40]].map(([x, y, a]) => '<ellipse cx="' + x + '" cy="' + y + '" rx="3.6" ry="1.9" fill="#FFF1C8" transform="rotate(' + a + ' ' + x + ' ' + y + ')"/>').join('') +
+    eye(40, 38, 4.2) + eye(60, 38, 4.2) + smile(50, 45, 6, 5) + blush(33, 67, 44) },
+  { n: 'Elote', bg: '#C9E8A0', d: () => {
+    let kern = ''; for (let r = 0; r < 7; r++) for (let c = 0; c < 4; c++) { const x = 40 + c * 6.6 + (r % 2 ? 3.3 : 0), y = 20 + r * 9.6; if (r === 2 || r === 3 || r === 4) { if (c === 1 || c === 2) continue; } kern += '<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="2.5" fill="#E8B923"/>'; }
+    return P('M32 96 C16 70 22 44 38 40 C34 60 38 80 50 96Z', '#5AA84B') + P('M68 96 C84 70 78 44 62 40 C66 60 62 80 50 96Z', '#5AA84B') + R(33, 10, 34, 78, 17, '#F6D646') + kern +
+      P('M33 30 q4 7 8.5 0 q4 7 8.5 0 q4 7 8.5 0 q4 7 8.5 0 V24 H33Z', '#fff', 1.8) + C(40, 36, 1.4, '#E04652', 0) + C(58, 37, 1.4, '#E04652', 0) + eye(43, 52, 4) + eye(57, 52, 4) + smile(50, 60, 6, 5) + blush(37, 63, 59); } },
+  { n: 'Chile', bg: '#FFE0C2', d: () =>
+    P('M50 24 C72 24 78 48 72 68 C67 84 58 95 46 93 C38 82 28 72 28 54 C28 36 36 24 50 24Z', '#E04652') + P('M36 40 C38 34 42 30 47 29', null, 2, ' stroke="#fff" stroke-width="3" opacity=".55" stroke-linecap="round"') + P('M42 25 Q42 8 58 8 Q58 18 55 25Z', '#4FA85C') +
+    eye(42, 50, 4.4) + eye(58, 50, 4.4) + P('M34 66 q8 -7 16 0 q8 -7 16 0 q-8 9 -16 3 q-8 6 -16 -3Z', '#3A2A1E', 1.6) + smile(50, 74, 6, 5) + blush(34, 66, 60) },
+  { n: 'Fresa', bg: '#FFE3E8', d: () =>
+    P('M50 93 C26 79 14 57 19 43 C24 29 40 27 50 35 C60 27 76 29 81 43 C86 57 74 79 50 93Z', '#E8505B') + P('M50 32 L40 21 L33 29 L44 31 L36 40 L46 37 L50 48 L54 37 L64 40 L56 31 L67 29 L60 21Z', '#4FA85C', 1.8) +
+    [[28, 50], [72, 50], [36, 68], [64, 68], [50, 80], [26, 40], [74, 40], [50, 62]].map(([x, y]) => '<ellipse cx="' + x + '" cy="' + y + '" rx="1.7" ry="2.5" fill="#FFE27A"/>').join('') + eye(42, 54, 4.2) + eye(58, 54, 4.2) + smile(50, 62, 6, 6) + blush(35, 65, 61) },
+  { n: 'Sol', bg: '#8ED1FF', d: () => {
+    let rays = ''; for (let i = 0; i < 12; i++) { const a = i * Math.PI / 6, b = a + Math.PI / 12, c = a - Math.PI / 12; rays += P('M' + (50 + Math.cos(c) * 28).toFixed(1) + ' ' + (52 + Math.sin(c) * 28).toFixed(1) + ' L' + (50 + Math.cos(a) * 46).toFixed(1) + ' ' + (52 + Math.sin(a) * 46).toFixed(1) + ' L' + (50 + Math.cos(b) * 28).toFixed(1) + ' ' + (52 + Math.sin(b) * 28).toFixed(1) + 'Z', '#FFB23F', 1.8); }
+    return rays + C(50, 52, 27, '#FFD84D') + R(28, 42, 19, 13, 5, '#22232B', 1.6) + R(53, 42, 19, 13, 5, '#22232B', 1.6) + L('M47 47 H53', 2.4) + L('M32 45 l5 0 M57 45 l5 0', 1.6, '#fff') + smile(50, 60, 10, 9) + blush(32, 68, 61); } },
+  { n: 'Bruja', bg: '#3C2A5C', d: () =>
+    P('M27 52 C20 66 22 84 28 94 C30 80 34 70 36 60Z', '#F2873A', 1.8) + P('M73 52 C80 66 78 84 72 94 C70 80 66 70 64 60Z', '#F2873A', 1.8) + C(50, 64, 19, '#A6D96A') +
+    P('M20 46 Q50 38 80 46 Q80 53 50 53 Q20 53 20 46Z', '#1F1B2E') + P('M32 46 Q38 20 58 4 Q56 24 68 46Z', '#2B2540') + R(32, 39, 36, 6, 0, '#9A5BE0', 1.6) + R(45.5, 37.5, 9, 9, 1.5, '#FFD84D', 1.6) +
+    eye(43, 62, 3.8) + eye(57, 62, 3.8) + L('M37 56 L46 58 M63 56 L54 58', 2.2) + C(50, 68, 3.4, '#8FC456', 1.4) + dot(52, 67, .9) + L('M42 76 Q50 81 60 73', 2.2) + P('M52 77 l1.6 4 l1.6 -4', '#fff', 1) + star(84, 20, 4, '#FFE27A') },
+  { n: 'Vampiro', bg: '#5A1E3C', d: () =>
+    P('M16 98 L26 66 L50 84 L74 66 L84 98Z', '#1F1B2E') + P('M34 72 L50 90 L66 72 L50 80Z', '#B3283C') + E(50, 56, 22, 25, '#EDE7F5') + P('M28 54 C26 30 44 26 50 34 C56 26 74 30 72 54 C66 44 58 42 50 48 C42 42 34 44 28 54Z', '#1B1426') +
+    E(42, 56, 4.6, 4.2, '#fff', 1.6) + E(58, 56, 4.6, 4.2, '#fff', 1.6) + C(42.4, 56.4, 2, '#C4263A', 0) + C(58.4, 56.4, 2, '#C4263A', 0) + L('M36 51 L46 54 M64 51 L54 54', 2.2) + L('M43 69 Q50 73 57 69', 2) + P('M44 69.4 l2 5 l2 -4 M52 70 l2 4 l2 -5', '#fff', 1.2) + blush(35, 65, 64) +
+    P('M80 14 q4 4 8 0 q-1 6 -4 8 q-3 -2 -4 -8Z', '#2B2540', 1.2) },
+  { n: 'Momia', bg: '#CFE0EA', d: () =>
+    P('M66 82 q14 4 12 14 q-12 0 -18 -8Z', '#F1E6C8', 1.8) + C(50, 54, 28, '#F1E6C8') + L('M24 40 Q50 31 76 40 M23 66 Q50 76 77 66 M30 76 Q50 84 70 76 M28 32 Q50 24 72 32', 1.8, '#C9B98E') + R(25, 46, 50, 16, 7, '#2B2540', 0) +
+    C(40, 54, 5.6, '#fff', 0) + C(60, 54, 5.6, '#fff', 0) + dot(41, 55, 2.4) + dot(61, 55, 2.4) + L('M24 46 Q50 40 76 46', 2.4) + L('M24 62 Q50 68 76 62', 2.4) + smile(50, 74, 5, 4) + L('M44 40 l8 -6', 1.6, '#C9B98E') },
+  { n: 'Tiburón', bg: '#A8DCF5', d: () =>
+    P('M43 36 L53 6 L64 38Z', '#6C8FB8') + E(50, 60, 37, 27, '#6C8FB8') + E(50, 70, 28, 14, '#E6F1FA', 0) + P('M20 63 Q50 94 80 63Z', '#7A1F2B') + P('M20 63 L28 72 L35 65 L43 75 L50 66 L57 75 L65 65 L72 72 L80 63Z', '#fff', 1.4) +
+    eye(35, 52, 4.6) + eye(65, 52, 4.6) + L('M19 56 v7 M24 58 v7', 1.6) + L('M81 56 v7 M76 58 v7', 1.6) + P('M0 90 Q12 82 25 90 T50 90 T75 90 T100 90 V100 H0Z', '#6BC3F2', 2) },
+  { n: 'Panda', bg: '#D9F2D0', d: () =>
+    C(25, 30, 10.5, '#2B2540') + C(75, 30, 10.5, '#2B2540') + C(50, 56, 30, '#fff') + '<ellipse cx="36" cy="52" rx="8.4" ry="10.6" fill="' + INK + '" transform="rotate(24 36 52)"/><ellipse cx="64" cy="52" rx="8.4" ry="10.6" fill="' + INK + '" transform="rotate(-24 64 52)"/>' +
+    C(37, 51, 3.6, '#fff', 0) + C(63, 51, 3.6, '#fff', 0) + dot(38, 52, 2) + dot(62, 52, 2) + E(50, 64, 5.4, 3.8, INK, 0) + L('M50 68 V72 M43 72 Q50 77 57 72', 2) + blush(33, 67, 66) + R(77, 66, 7, 30, 3.5, '#6BC36B', 1.8) + L('M77 76 h7 M77 86 h7', 1.4) + P('M84 70 q10 -4 12 -12 q-10 0 -12 12Z', '#8EE08E', 1.4) },
+  { n: 'Mono', bg: '#FFE0B0', d: () =>
+    C(21, 52, 9.6, '#8A5A3A') + C(79, 52, 9.6, '#8A5A3A') + C(21, 52, 5.4, '#F2CFA3', 0) + C(79, 52, 5.4, '#F2CFA3', 0) + C(50, 50, 28, '#8A5A3A') + E(40, 50, 11, 10, '#F2CFA3', 0) + E(60, 50, 11, 10, '#F2CFA3', 0) + E(50, 64, 18, 14, '#F2CFA3', 0) +
+    eye(42, 49, 4.4) + eye(58, 49, 4.4) + dot(46, 60, 1.4) + dot(54, 60, 1.4) + smile(50, 66, 9, 7) + blush(34, 66, 58) + P('M60 86 Q80 84 90 64 Q90 88 70 96Z', '#FFE04D', 1.8) + L('M64 90 L72 92', 1.4, '#C9A82A') }
+
+  ];
+  const slug = n => 'a:' + n.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const BY = {}; AV.forEach(a => { a.id = slug(a.n); BY[a.id] = a; });
+  const memo = {};
+  // <svg> del avatar (sin tamaño fijo: ocupa el espacio de su contenedor)
+  function svg(id) {
+    const a = BY[id]; if (!a) return '';
+    if (!memo[id]) memo[id] = '<svg class="avsvg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" aria-hidden="true" focusable="false"><defs><clipPath id="avc"><circle cx="50" cy="50" r="48"/></clipPath></defs>' +
+      '<circle cx="50" cy="50" r="49" fill="' + a.bg + '"/><g clip-path="url(#avc)">' + a.d() + '</g><circle cx="50" cy="50" r="48" fill="none" stroke="#fff" stroke-width="2.4"/></svg>';
+    return memo[id];
+  }
+  return { ids: AV.map(a => a.id), name: id => (BY[id] ? BY[id].n : ''), has: id => !!BY[id], svg, list: AV };
+})();
+
+
 /* Cerebro de los bots: evalúa todas las jugadas legales y elige la de mejor resultado. */
 const Bot = (function () {
   const E = Engine;
@@ -1892,11 +2072,15 @@ if (typeof module !== 'undefined') module.exports = Bot;
   const app = document.getElementById('app');
   const P2P = !!window.VIRUS_P2P;
   const SHARE_URL = (typeof window.VIRUS_SHARE_URL === 'string') ? window.VIRUS_SHARE_URL : 'https://claude.ai/artifact/FXVbqQBsWgm2Q6ZBqbFw87';
-  const AVATARS = ['🦊', '🐼', '🐸', '🦉', '🐙', '🦄', '🐯', '🐧', '🐵', '🐢', '🦖', '🐰', '🦁', '🐶'];
+  const AVATARS = (typeof Avatars !== 'undefined') ? Avatars.ids : ['🦊', '🐼', '🐸', '🦉', '🐙', '🦄', '🐯', '🐧', '🐵', '🐢', '🦖', '🐰', '🦁', '🐶'];
   const BOT_NAMES = ['Ada', 'Turing', 'Nova', 'Pixel', 'Luna', 'Beto'];
 
   // ---------- utilidades ----------
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  // Avatar: dibujo SVG si es uno de los nuevos; si es un emoji de una partida vieja, se muestra como texto
+  const hasAv = av => typeof Avatars !== 'undefined' && Avatars.has(av);
+  const avInner = av => hasAv(av) ? Avatars.svg(av) : esc(av || '🙂');
+  const avName = av => hasAv(av) ? Avatars.name(av) : String(av || '');
   const store = {
     get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
     set(k, v) { try { localStorage.setItem(k, v); } catch (e) { } }
@@ -1962,7 +2146,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
       me = store.get('virus.uid');
       if (!me) { me = 'g_' + Math.random().toString(36).slice(2, 10); store.set('virus.uid', me); }
     }
-    if (!ui.av) { ui.av = AVATARS[Math.floor(Math.random() * AVATARS.length)]; store.set('virus.av', ui.av); }
+    if (!ui.av || AVATARS.indexOf(ui.av) < 0) { ui.av = AVATARS[Math.floor(Math.random() * AVATARS.length)]; store.set('virus.av', ui.av); } // (los emojis guardados de antes se cambian por un avatar nuevo)
     ready = true;
     // Enlace de invitación: ...#ABCD
     let hash = '';
@@ -2011,7 +2195,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
   }
 
   function setErr(m) { ui.err = m; render(); }
-  const unusedAvatar = players => { const used = Object.keys(players || {}).map(u => players[u].av); return AVATARS.find(a => used.indexOf(a) < 0) || AVATARS[0]; };
+  const unusedAvatar = players => { const used = Object.keys(players || {}).map(u => players[u].av); const free = AVATARS.filter(a => used.indexOf(a) < 0); return free.length ? free[Math.floor(Math.random() * free.length)] : AVATARS[0]; };
 
   async function createRoom() {
     readInputs();
@@ -2351,7 +2535,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
       const log = g && g.log && g.log.length ? g.log[g.log.length - 1] : '';
       el.className = 'fx'; el.setAttribute('aria-hidden', 'true');
       el.innerHTML = '<div class="fx-cards">' + cards.map(c => '<div class="fx-card" style="width:' + w + 'px">' + Art.svg(c, { label: esc(shortCardName(c)) }) + '</div>').join('') + '</div>' +
-        '<div class="fx-cap"><b>' + esc(pl.av || '') + ' ' + esc(pl.name || '') + '</b>' + (L.how === 'disc' ? ' descarta' : ' juega') + '<span>' + esc(log) + '</span></div>';
+        '<div class="fx-cap"><span class="fxav">' + avInner(pl.av) + '</span> <b>' + esc(pl.name || '') + '</b>' + (L.how === 'disc' ? ' descarta' : ' juega') + '<span>' + esc(log) + '</span></div>';
       document.body.appendChild(el);
       const host = document.querySelector('.felt'), hr = host ? host.getBoundingClientRect() : { left: 0, top: 0, width: innerWidth, height: innerHeight };
       const cx = hr.left + hr.width / 2, cy = hr.top + Math.min(hr.height / 2, 260);
@@ -2493,7 +2677,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
     const curse = E.cursed(g, pid) ? '<span class="curse" role="img" aria-label="Truco o trato: no puede ganar" title="Truco o trato: no puede ganar">' + (g.curse.card ? Art.svg(g.curse.card, { marks: false }) : '🎃') + '</span>' : '';
     const organs = body.length ? body.map((sl, i) => organTile(sl, pid, i, mine ? 'lg' : 'sm')).join('') : '<span class="empty">Sin órganos</span>';
     return '<div data-seat="' + esc(pid) + '" class="seat ' + (pos === 'left' || pos === 'right' ? 'side ' : '') + (idle ? 'idle ' : '') + (turn ? 'turn ' : '') + (errT ? 'target' : '') + '"' + (errT ? ' data-act="player" data-p="' + esc(pid) + '"' : '') + '>' +
-      '<div class="plate"><span class="av" style="--av:' + col + '">' + (pl.av || shortName(pid).charAt(0)) + '</span><span class="who"><span class="nm">' + (mine ? 'Tú' : esc(shortName(pid))) + (pl.bot ? ' <small>🤖</small>' : '') + (idle ? ' <small title="Lleva varios turnos sin jugar">💤</small>' : '') + '</span><span class="sub">' + cnt + pips + '</span></span>' + curse + '</div>' +
+      '<div class="plate"><span class="av" style="--av:' + col + '">' + (pl.av ? avInner(pl.av) : esc(shortName(pid).charAt(0))) + '</span><span class="who"><span class="nm">' + (mine ? 'Tú' : esc(shortName(pid))) + (pl.bot ? ' <small>🤖</small>' : '') + (idle ? ' <small title="Lleva varios turnos sin jugar">💤</small>' : '') + '</span><span class="sub">' + cnt + pips + '</span></span>' + curse + '</div>' +
       '<div class="obody">' + organs + '</div></div>';
   }
 
@@ -2548,9 +2732,9 @@ if (typeof module !== 'undefined') module.exports = Bot;
     const host = g.host === me;
     const o = g.opts || {};
     const takenByOthers = ids.filter(u => u !== me).map(u => g.players[u].av);
-    const list = ids.map(u => '<li><span class="pl"><span class="av sm" style="--av:' + AVBG[ids.indexOf(u) % AVBG.length] + '">' + (g.players[u].av || '🙂') + '</span>' + esc(g.players[u].name) + (u === me ? ' (tú)' : '') + (g.players[u].bot ? ' 🤖' : '') + '</span>' +
+    const list = ids.map(u => '<li><span class="pl"><span class="av sm" style="--av:' + AVBG[ids.indexOf(u) % AVBG.length] + '">' + avInner(g.players[u].av || '🙂') + '</span>' + esc(g.players[u].name) + (u === me ? ' (tú)' : '') + (g.players[u].bot ? ' 🤖' : '') + '</span>' +
       (host && u !== g.host ? '<button class="btn alt sm" data-act="rmbot" data-p="' + esc(u) + '">Quitar</button>' : '<span class="note">' + (u === g.host ? 'anfitrión' : (g.players[u].bot ? 'bot' : '')) + '</span>') + '</li>').join('');
-    const picker = AVATARS.map(a => '<button class="avbtn' + (ui.av === a || (g.players[me] && g.players[me].av === a) ? ' on' : '') + '" data-act="avatar" data-a="' + a + '"' + (takenByOthers.indexOf(a) >= 0 ? ' disabled' : '') + ' aria-label="Avatar ' + a + '">' + a + '</button>').join('');
+    const picker = AVATARS.map(a => '<button class="avbtn' + (ui.av === a || (g.players[me] && g.players[me].av === a) ? ' on' : '') + '" data-act="avatar" data-a="' + a + '"' + (takenByOthers.indexOf(a) >= 0 ? ' disabled' : '') + ' aria-label="Avatar ' + esc(avName(a)) + '" title="' + esc(avName(a)) + '">' + avInner(a) + '</button>').join('');
     const opts = OPTS.map(x => {
       const on = !!o[x.k];
       const off = (x.needs && !o[x.needs]) || (x.needs2 && ids.length !== 2);
@@ -2698,7 +2882,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
     const rows = scoreRows();
     if (!rows.some(r => r.n > 0)) return '';
     return '<div class="card-box"><h3>🏆 Marcador de la noche</h3><div class="score">' + rows.map(r =>
-      '<div class="srow"><span class="sav">' + esc(g.players[r.u].av || '') + '</span><span class="snm">' + esc(g.players[r.u].name) + (r.u === me ? ' (tú)' : '') + '</span><b>' + r.n + '</b></div>').join('') + '</div></div>';
+      '<div class="srow"><span class="sav">' + avInner(g.players[r.u].av) + '</span><span class="snm">' + esc(g.players[r.u].name) + (r.u === me ? ' (tú)' : '') + '</span><b>' + r.n + '</b></div>').join('') + '</div></div>';
   }
   const scoreLine = () => { const r = scoreRows().filter(x => x.n > 0); return r.length ? '<p class="note scoreline">🏆 ' + r.map(x => esc(shortName(x.u)) + ' ' + x.n).join(' · ') + '</p>' : ''; };
 
@@ -2823,7 +3007,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
     const names = Object.keys(g.players).map(u => ({ u, n: g.players[u].name })).sort((x, y) => y.n.length - x.n.length);
     const rows = (g.log || []).slice().reverse().map(l => {
       const p = names.find(x => l.indexOf(x.n) === 0);
-      return '<li><span class="hav">' + (p ? esc(g.players[p.u].av || '') : '•') + '</span><span>' + (p ? '<b>' + esc(p.n) + '</b>' + esc(l.slice(p.n.length)) : esc(l)) + '</span></li>';
+      return '<li><span class="hav">' + (p ? avInner(g.players[p.u].av) : '•') + '</span><span>' + (p ? '<b>' + esc(p.n) + '</b>' + esc(l.slice(p.n.length)) : esc(l)) + '</span></li>';
     }).join('');
     return '<div class="overlay histov" data-act="histclose"><div class="card-box histbox"><div class="histhead"><h3>📜 Historial de jugadas</h3><button class="menubtn" data-act="histclose" aria-label="Cerrar">✕</button></div><ol class="histlist">' + rows + '</ol></div></div>';
   }
