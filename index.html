@@ -6,7 +6,7 @@
 <title>Virus!</title>
 <meta name="description" content="Virus! el juego de cartas, en línea y sin cuentas">
 <meta name="theme-color" content="#0F473A">
-<script>window.VIRUS_BUILD='26-oct 19:28';</script>
+<script>window.VIRUS_BUILD='26-oct 20:46';</script>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -491,7 +491,7 @@ details.log div { padding: 2px 0; }
   function sendPeers() {
     if (N.role !== 'host') return;
     const ids = hostPeerList(); V.peers = ids;
-    Object.keys(N.conns).forEach(k => { const c = N.conns[k]; if (c.open) { try { c.send({ t: 'peers', ids }); } catch (e) { } } });
+    Object.keys(N.conns).forEach(k => { const c = N.conns[k]; if (c.open) { try { tx(c, { t: 'peers', ids }); } catch (e) { } } });
     ensureCalls();
   }
   async function voiceOn() {
@@ -551,7 +551,30 @@ details.log div { padding: 2px 0; }
   // ---------- anfitrión ----------
   const saveHost = () => { if (N.role === 'host' && N.doc) store.set('virus.host', JSON.stringify({ code: N.code, doc: N.doc })); };
   const readHost = () => { try { return JSON.parse(store.get('virus.host')); } catch (e) { return null; } };
-  function broadcast() { Object.keys(N.conns).forEach(k => { const c = N.conns[k]; if (c.open) { try { c.send({ t: 'state', doc: N.doc }); } catch (e) { } } }); }
+  // Mensajes grandes (la sala con varias fotos pasa de 16 KB) se parten en pedazos pequeños y se vuelven a armar al recibirlos;
+  // sin esto el estado de la sala no le llegaba completo al jugador que entraba y veía «No existe una sala con ese código».
+  const CH = 7000, CHMAX = 15000; let chunkSeq = 0; // solo se parten los mensajes > 15 KB (los normales viajan enteros, así una versión anterior los sigue entendiendo)
+  function tx(conn, obj) {
+    let s; try { s = JSON.stringify(obj); } catch (e) { return; }
+    if (s.length <= CHMAX) { conn.send(obj); return; }
+    s = s.replace(/[\u007f-\uffff]/g, c => '\\u' + ('0000' + c.charCodeAt(0).toString(16)).slice(-4)); // solo ASCII: así ningún pedazo parte un emoji por la mitad
+    const id = (++chunkSeq) + '.' + Math.random().toString(36).slice(2, 7), n = Math.ceil(s.length / CH);
+    for (let i = 0; i < n; i++) conn.send({ t: 'chunk', id, i, n, d: s.slice(i * CH, (i + 1) * CH) });
+  }
+  function rx(handler, onRaw) {
+    const bufs = {};
+    return m => {
+      if (onRaw) onRaw(m);
+      if (m && m.t === 'chunk' && typeof m.d === 'string' && m.n > 0 && m.n < 200) {
+        const b = bufs[m.id] || (bufs[m.id] = { n: m.n, got: 0, p: [] });
+        if (b.p[m.i] === undefined) { b.p[m.i] = m.d; b.got++; }
+        if (b.got >= b.n) { delete bufs[m.id]; let o; try { o = JSON.parse(b.p.join('')); } catch (e) { return; } handler(o); }
+        return;
+      }
+      handler(m);
+    };
+  }
+  function broadcast() { Object.keys(N.conns).forEach(k => { const c = N.conns[k]; if (c.open) { try { tx(c, { t: 'state', doc: N.doc }); } catch (e) { } } }); }
 
   function hostWrite(kind, payload) {
     if (kind === 'set') {
@@ -575,15 +598,15 @@ details.log div { padding: 2px 0; }
     peer.on('disconnected', () => { setTimeout(() => { try { if (N.peer === peer && !peer.destroyed) peer.reconnect(); } catch (e) { } }, 1500); });
     peer.on('error', err => { if (peer.__open && N.peer === peer && err.type === 'unavailable-id') stepDown(); }); // otro jugador tomó la sala mientras yo estaba sin conexión
     peer.on('connection', conn => {
-      conn.on('open', () => { N.conns[conn.peer] = conn; try { conn.send({ t: 'state', doc: N.doc }); } catch (e) { } sendPeers(); });
-      conn.on('data', m => {
+      conn.on('open', () => { N.conns[conn.peer] = conn; try { tx(conn, { t: 'state', doc: N.doc }); } catch (e) { } sendPeers(); });
+      conn.on('data', rx(m => {
         if (!m || typeof m !== 'object') return;
-        if (m.t === 'hello') { try { conn.send({ t: 'state', doc: N.doc }); } catch (e) { } }
+        if (m.t === 'hello') { try { tx(conn, { t: 'state', doc: N.doc }); } catch (e) { } }
         else if (m.t === 'set' || m.t === 'update') {
           const ok = hostWrite(m.t, m.t === 'set' ? m.doc : m.patch);
-          if (!ok) { try { conn.send({ t: 'state', doc: N.doc }); } catch (e) { } }
+          if (!ok) { try { tx(conn, { t: 'state', doc: N.doc }); } catch (e) { } }
         }
-      });
+      }));
       const gone = () => { if (N.conns[conn.peer] === conn) { delete N.conns[conn.peer]; sendPeers(); } };
       conn.on('close', gone); conn.on('error', gone);
     });
@@ -688,11 +711,10 @@ details.log div { padding: 2px 0; }
     const conn = peer.connect('virus-' + code, { reliable: true, serialization: 'json' });
     N.conn = conn;
     conn.on('open', () => { N.lastMsg = Date.now(); try { conn.send({ t: 'hello' }); } catch (e) { } });
-    conn.on('data', m => {
-      N.lastMsg = Date.now();
+    conn.on('data', rx(m => {
       if (m && m.t === 'state') { N.doc = m.doc; N.lostAt = 0; setStatus('ok'); if (finish) finish(true); notify(); }
       else if (m && m.t === 'peers' && Array.isArray(m.ids)) { V.peers = m.ids.filter(x => typeof x === 'string'); ensureCalls(); }
-    });
+    }, () => { N.lastMsg = Date.now(); }));
     const lost = () => { if (N.conn !== conn || N.leaving) return; if (!N.lostAt) N.lostAt = Date.now(); setStatus('reconnecting'); scheduleRetry(code); };
     conn.on('close', lost); conn.on('error', lost);
   }
@@ -732,7 +754,7 @@ details.log div { padding: 2px 0; }
           if (N.role === 'host' && N.code === code) { if (!hostWrite('set', d)) notify(); return; }
           if (N.role === 'guest' && N.code === code) {
             if (!N.conn || !N.conn.open) throw new Error('sin conexión');
-            N.conn.send({ t: 'set', doc: d }); return;
+            tx(N.conn, { t: 'set', doc: d }); return;
           }
           await becomeHost(code, clone(d)); notify();
         },
@@ -740,7 +762,7 @@ details.log div { padding: 2px 0; }
           if (N.role === 'host' && N.code === code) { hostWrite('update', patch); return; }
           if (N.role === 'guest' && N.code === code) {
             if (!N.conn || !N.conn.open) throw new Error('sin conexión');
-            N.conn.send({ t: 'update', patch }); return;
+            tx(N.conn, { t: 'update', patch }); return;
           }
           throw new Error('sin sala');
         },
@@ -1217,15 +1239,15 @@ const Engine = (function () {
       draw(g, u);
       if (!checkWin(g, u)) endTurn(g);
     }
-    g.seq++; g.log = g.log.slice(-120);
+    g.seq++; g.log = g.log.slice(-80);
     return { g };
   }
   // Tras jugar una carta: ¿sigue el turno (fase extra) o termina?
   function proceed(g, u, start) {
-    if (checkWin(g, u)) { g.seq++; g.log = g.log.slice(-120); return { g }; }
+    if (checkWin(g, u)) { g.seq++; g.log = g.log.slice(-80); return { g }; }
     if (start) {
       if (start.n <= 0 || !g.hands[u].length) return finish(g, u);
-      g.extra = start; g.seq++; g.log = g.log.slice(-120); return { g };
+      g.extra = start; g.seq++; g.log = g.log.slice(-80); return { g };
     }
     if (g.extra && g.extra.u === u) {
       g.extra.n--;
@@ -2463,7 +2485,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
     const has = !!myPhoto();
     return '<div class="photorow"><label class="btn alt photobtn">' + (has ? '📷 Cambiar mi foto' : '📷 Usar mi foto') + '<input type="file" accept="image/*" data-photo="1" class="vh" aria-label="Elegir una foto"></label>' +
       (has ? '<button class="btn alt" data-act="photoclear">Quitar foto</button>' : '') + '</div>' +
-      '<p class="note" style="margin:4px 0 10px">La foto solo la ven los jugadores de la sala y se hace pequeña (no se guarda en ningún servidor).</p>';
+      '<p class="note" style="margin:4px 0 10px">La foto solo la ven los jugadores de la sala y se hace muy pequeña (no se guarda en ningún servidor).</p>';
   }
   function loadImage(file) {
     return new Promise((res, rej) => { const url = URL.createObjectURL(file), im = new Image(); im.onload = () => { URL.revokeObjectURL(url); res(im); }; im.onerror = () => { URL.revokeObjectURL(url); rej(new Error('img')); }; im.src = url; });
@@ -2472,12 +2494,12 @@ if (typeof module !== 'undefined') module.exports = Bot;
     if (!file || !/^image\//.test(file.type)) return setErr('Elige una imagen.');
     try {
       let src; try { src = await createImageBitmap(file, { imageOrientation: 'from-image' }); } catch (e) { src = await loadImage(file); }
-      const S = 80, cv = document.createElement('canvas'); cv.width = cv.height = S;
+      const S = 64, cv = document.createElement('canvas'); cv.width = cv.height = S;
       const cx = cv.getContext('2d'), w = src.width || src.naturalWidth, h = src.height || src.naturalHeight, m = Math.min(w, h);
       cx.fillStyle = '#fff'; cx.fillRect(0, 0, S, S);
       cx.drawImage(src, (w - m) / 2, (h - m) / 2, m, m, 0, 0, S, S);
       let q = 0.82, data = cv.toDataURL('image/jpeg', q);
-      while (data.length > 6500 && q > 0.35) { q -= 0.1; data = cv.toDataURL('image/jpeg', q); }
+      while (data.length > 3600 && q > 0.3) { q -= 0.1; data = cv.toDataURL('image/jpeg', q); }
       if (!isPhoto(data)) return setErr('No se pudo usar esa foto.');
       ui.photo = data; store.set('virus.photo', data); ui.err = '';
       if (g && g.players && g.players[me]) { const p = {}; p[me] = { ph: data }; await updatePlayers(p); }
