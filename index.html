@@ -6,7 +6,7 @@
 <title>Virus!</title>
 <meta name="description" content="Virus! el juego de cartas, en línea y sin cuentas">
 <meta name="theme-color" content="#0F473A">
-<script>window.VIRUS_BUILD='26-oct 20:46';</script>
+<script>window.VIRUS_BUILD='27-oct 21:30';</script>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -110,8 +110,8 @@ details.rules p { margin: 8px 0; }
 .share { margin-top: 0; }
 .copybox { margin-top: 8px; width: 100%; padding: 10px; border-radius: 8px; border: 1.5px solid var(--line); background: var(--bg); color: var(--ink); font: inherit; font-size: 13px; }
 .pl { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.av.sm { width: 30px; height: 30px; font-size: 17px; }
-.avgrid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 5px; }
+.av.sm { width: 38px; height: 38px; font-size: 22px; }
+.avgrid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
 .avbtn { aspect-ratio: 1; font-size: 24px; border-radius: 50%; border: 2px solid var(--line); background: var(--bg); display: grid; place-items: center; padding: 1px; overflow: hidden; }
 .avbtn.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, var(--bg)); }
 .avbtn[disabled] { opacity: .3; cursor: default; }
@@ -160,7 +160,7 @@ details.rules p { margin: 8px 0; }
 .plate { min-width: 0; display: flex; align-items: center; gap: 6px; background: var(--plate); border-radius: 999px; padding: 3px 10px 3px 3px; max-width: 100%; border: 2px solid transparent; }
 .seat.turn .plate { border-color: var(--gold); box-shadow: 0 0 14px rgba(244, 211, 94, .55); }
 .seat.target { outline: 3px solid var(--mint); outline-offset: 3px; background: rgba(159, 232, 208, .12); }
-.av { width: 30px; height: 30px; flex: none; border-radius: 50%; display: grid; place-items: center; background: var(--av, #4A6FA5); font-size: 18px; line-height: 1; }
+.av { width: 40px; height: 40px; flex: none; border-radius: 50%; display: grid; place-items: center; background: var(--av, #4A6FA5); font-size: 24px; line-height: 1; }
 .who { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; overflow: hidden; }
 .nm { font-weight: 700; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 96px; }
 .nm small { font-size: 10px; }
@@ -326,9 +326,9 @@ details.log div { padding: 2px 0; }
 .av { overflow: hidden; }
 .avbtn .avsvg { border-radius: 50%; }
 .avbtn.on { box-shadow: 0 0 0 2px var(--accent); }
-.fxav { display: inline-block; width: 20px; height: 20px; vertical-align: middle; }
-.sav { width: 26px; height: 26px; flex: none; display: block; }
-.hav { width: 24px; height: 24px; display: block; }
+.fxav { display: inline-block; width: 26px; height: 26px; vertical-align: middle; }
+.sav { width: 34px; height: 34px; flex: none; display: block; }
+.hav { width: 30px; height: 30px; display: block; }
 .fx-cap .fxav { display: inline-block; opacity: 1; font-size: inherit; margin-right: 2px; }
 
 /* ---- volumen de efectos ---- */
@@ -360,6 +360,13 @@ details.log div { padding: 2px 0; }
 .stdots i.w { background: #35A363; } .stdots i.l { background: #E04652; }
 .shareimg { display: block; width: 100%; height: auto; border-radius: 12px; margin: 6px 0 10px; box-shadow: 0 4px 14px rgba(0, 0, 0, .3); }
 .sharebox .bar a.btn { text-align: center; text-decoration: none; }
+
+/* ---- frases rápidas ---- */
+.reacttray { flex-wrap: wrap; width: min(304px, calc(100vw - 16px)); }
+.reacttray .rphr { display: flex; flex-wrap: wrap; gap: 4px; width: 100%; margin-top: 2px; }
+.reacttray .rphr button { width: auto; height: 34px; padding: 0 10px; font-size: 13px; font-weight: 700; color: #fff; }
+.rfx.txt { width: auto; max-width: 220px; }
+.rfx.txt span { font-size: 15px; font-weight: 800; background: #fff; color: #12212C; padding: 6px 12px; border-radius: 14px; filter: drop-shadow(0 4px 6px rgba(0, 0, 0, .4)); white-space: nowrap; }
 
 </style>
 </head>
@@ -1356,7 +1363,7 @@ const Engine = (function () {
     const c = g.hands[u].find(x => x.i === P.cardId);
     if (!prot.length) return run(g, u, P.cardId, P.a, []);
     if (c.t === 'v') { // el defensor elige a quién rebotar el virus, o lo descarta
-      g.redirect = { u, cardId: P.cardId, a: P.a, excluded: prot, by: prot[0] };
+      g.redirect = { u, cardId: P.cardId, a: P.a, excluded: prot, by: prot[0], chain: P.chain || 0 };
       if (!redirectCandidates(g).length) return cancelCard(g, u, P.cardId);
       g.seq++;
       return { g };
@@ -1376,7 +1383,14 @@ const Engine = (function () {
     const c = g0.hands[R.u].find(x => x.i === R.cardId);
     const e = check(g0, R.u, c, a2, true);
     if (e) return { err: e };
-    const g = clone(g0); const cardId = g.redirect.cardId; g.redirect = null;
+    const g = clone(g0); const cardId = g.redirect.cardId, chain = g.redirect.chain || 0; g.redirect = null;
+    // Cadena de trajes: si el virus rebota hacia alguien que también tiene Traje de protección (incluido quien lo lanzó), se le pregunta a él
+    if (c && c.t === 'v' && chain < 8 && hasSuit(g, a2.pid)) {
+      g.pending = { u: R.u, cardId, a: a2, holders: [a2.pid], decided: {}, since: Date.now(), chain: chain + 1 };
+      g.log.push(g.players[who].name + ' rebota el virus hacia ' + g.players[a2.pid].name + ': esperando respuesta');
+      g.seq++;
+      return { g, pending: true };
+    }
     return run(g, R.u, cardId, a2, []);
   }
   function noTarget(g0, who) {
@@ -1565,12 +1579,14 @@ const Art = (function () {
       '<circle cx="36" cy="58" r="1.8" fill="' + INK + '"/><circle cx="64" cy="58" r="1.8" fill="' + INK + '"/><circle cx="36" cy="79" r="1.8" fill="' + INK + '"/><circle cx="64" cy="79" r="1.8" fill="' + INK + '"/>' +
       '<path d="M42 94 h16 M42 99 h16" stroke="' + INK + '" stroke-width="1.6" stroke-linecap="round"/><path d="M34 56 h6" stroke="#fff" stroke-width="2" stroke-linecap="round" opacity=".8"/>';
   }
-  function mutant() {
-    return '<defs>' + grad('ogmut', '#FFD9A8', '#F0A560', true) + '</defs>' +
-      P('M24 104 C14 74 42 70 40 52 C38 36 58 28 68 38 C78 50 62 56 64 64 C66 74 84 76 78 104Z', 'url(#ogmut)', '#7A4210', 2.6) +
-      C(49, 51, 8.5, '#fff', '#7A4210', 2) + C(50, 52, 3.6, '#22232B') + C(51.2, 50.8, 1.1, '#fff') +
-      C(36, 84, 2.8, '#7A4210', null, 0, .45) + C(45, 94, 2.8, '#7A4210', null, 0, .45) + C(62, 90, 2.2, '#7A4210', null, 0, .45) +
-      gloss('M30 80 C30 74 34 72 36 70', .6);
+  function mutant() { // masa gelatinosa radiactiva con ojos
+    const eye = (x, y, r, iris) => C(x, y, r, '#fff', INK, 2) + C(x, y + r * 0.05, r * 0.58, iris, INK, 1.2) + E(x, y + r * 0.05, r * 0.15, r * 0.44, INK, null, 0) + C(x - r * 0.26, y - r * 0.28, r * 0.17, '#fff', null, 0);
+    return '<defs>' + grad('mx2', '#E6F25A', '#FF9A2E', true) + '</defs>' +
+      P('M22 86 C12 66 22 48 36 44 C34 32 46 24 56 30 C68 26 80 38 76 50 C90 58 88 78 76 88 C70 98 54 96 48 92 C38 100 26 96 22 86Z', 'url(#mx2)', '#6B4A10', 2.6) +
+      P('M30 96 q-1 8 3 9 q3 -2 1 -9 M66 95 q0 7 3.4 7 q2.4 -2 0.6 -8', 'url(#mx2)', '#6B4A10', 2) +
+      eye(50, 50, 9, '#3E9B3A') + eye(34, 66, 6.4, '#B24AD6') + eye(66, 68, 7, '#3E73D8') +
+      P('M38 82 Q50 92 62 82', null, '#6B4A10', 2.6) + P('M42 83.6 l2 4 l2 -3.4 M52 85 l2 3.6 l2 -4', '#fff', INK, 1) +
+      C(28, 58, 2.6, '#E9FFC2', null, 0, .8) + C(72, 76, 2.2, '#E9FFC2', null, 0, .8) + C(60, 38, 2, '#E9FFC2', null, 0, .8) + gloss('M28 58 C28 52 32 48 38 47');
   }
   function organ(c, bg) {
     const art = { red: heart, green: stomach, blue: brain, yellow: bone, wild: wildOrgan, bionic, mutant }[c.c];
@@ -1779,7 +1795,7 @@ const Art = (function () {
     else if (cc === 'yellow') g = '<g transform="rotate(-40 10 10)"><rect x="2" y="7" width="16" height="6" rx="2" fill="#E3AE28" stroke="' + INK + '" stroke-width="1.3"/><circle cx="3" cy="7" r="3" fill="#E3AE28" stroke="' + INK + '" stroke-width="1.3"/><circle cx="3" cy="13" r="3" fill="#E3AE28" stroke="' + INK + '" stroke-width="1.3"/><circle cx="17" cy="7" r="3" fill="#E3AE28" stroke="' + INK + '" stroke-width="1.3"/><circle cx="17" cy="13" r="3" fill="#E3AE28" stroke="' + INK + '" stroke-width="1.3"/><rect x="3" y="7.8" width="14" height="4.4" fill="#E3AE28"/></g>';
     else if (cc === 'wild') g = '<circle cx="10" cy="10" r="8" fill="#fff" stroke="' + INK + '" stroke-width="1.3"/><path d="M10 2 A8 8 0 0 1 18 10 L10 10Z" fill="' + RAINBOW[1] + '"/><path d="M18 10 A8 8 0 0 1 10 18 L10 10Z" fill="' + RAINBOW[3] + '"/><path d="M10 18 A8 8 0 0 1 2 10 L10 10Z" fill="' + RAINBOW[2] + '"/><path d="M2 10 A8 8 0 0 1 10 2 L10 10Z" fill="' + RAINBOW[0] + '"/>';
     else if (cc === 'bionic') g = '<rect x="4" y="4" width="12" height="12" rx="3" fill="#C9D0DC" stroke="' + INK + '" stroke-width="1.3"/><circle cx="10" cy="10" r="3" fill="#E04652" stroke="' + INK + '" stroke-width="1"/>';
-    else if (cc === 'mutant') g = '<path d="M3 17 C0 8 8 8 7 4 C7 0 13 0 15 4 C17 8 12 10 13 12 C14 15 19 15 17 17Z" fill="#F0A560" stroke="' + INK + '" stroke-width="1.3"/><circle cx="9" cy="6" r="1.6" fill="#fff"/>';
+    else if (cc === 'mutant') g = '<path d="M2 15 C0 9 3 6 6 5 C5 2 9 0 12 2 C16 3 18 7 16 10 C20 12 18 17 13 18 C9 19 5 19 2 15Z" fill="#F2B63A" stroke="' + INK + '" stroke-width="1.3"/><circle cx="9" cy="8" r="2.4" fill="#fff" stroke="' + INK + '" stroke-width="0.8"/><circle cx="9.4" cy="8.2" r="1" fill="' + INK + '"/>';
     else return '';
     return g;
   }
@@ -2894,7 +2910,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
       '<p>Un virus infecta; una medicina cura o vacuna. Dos virus (normales o evolucionados) destruyen un órgano y dos medicinas (normales o experimentales) lo inmunizan.</p>' +
       '<p>Las medicinas normales solo curan virus normales; las experimentales curan también los evolucionados. Un virus evolucionado puede quitar cualquier vacuna; uno normal no puede quitar una experimental. Las cartas multicolor valen contra cualquier color, con la misma jerarquía. El órgano mutante solo lo afectan virus y medicinas multicolor.</p>' +
       '<p>Cada turno dura 30 segundos. Si no juegas a tiempo, se descarta tu mano y el juego sigue; tras dos turnos así, tus turnos duran 10 segundos hasta que vuelvas a jugar.</p>' +
-      '<p>Traje de protección: solo contra virus. Si te lanzan uno y lo tienes, te pregunta si lo usas (10 segundos; si no contestas, no se usa). Al usarlo robas una carta y eliges a quién rebotar el virus, o lo mandas al descarte.</p>' +
+      '<p>Traje de protección: solo contra virus. Si te lanzan uno y lo tienes, te pregunta si lo usas (10 segundos; si no contestas, no se usa). Al usarlo robas una carta y eliges a quién rebotar el virus, o lo mandas al descarte. Si el virus rebota hacia alguien que también tiene traje (incluso quien lo lanzó), esa persona puede rebotarlo otra vez.</p>' +
       '<p>Contagio: pasas todos tus virus que puedas a órganos libres (sin virus ni vacunas) de otros jugadores; tú eliges adónde va cada uno.</p>' +
       '<p>Trasplante: cambias un órgano tuyo por uno de otro jugador, en cualquier estado. Trasplante alienígena: cambias entre sí órganos de otros dos jugadores (no tuyos).</p></details>';
   }
@@ -3063,7 +3079,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
     const P = g.pending, c = g.hands[P.u].find(x => x.i === P.cardId), a = P.a, who = shortName(P.u);
     const org = (pid, idx) => { const sl = g.bodies[pid] && g.bodies[pid][idx]; return sl ? E.ONAME[sl.o.c].toLowerCase() : 'órgano'; };
     if (!c) return who + ' te ataca.';
-    if (c.t === 'v') return who + ' juega un virus' + (c.ev ? ' evolucionado' : '') + ' contra tu ' + org(a.pid, a.idx) + '.';
+    if (c.t === 'v') return (P.chain ? '¡El virus' + (c.ev ? ' evolucionado' : '') + ' de ' + who + ' rebotó hacia ti! Va contra tu ' : who + ' juega un virus' + (c.ev ? ' evolucionado' : '') + ' contra tu ') + org(a.pid, a.idx) + '.' + (P.chain ? ' Puedes rebotarlo otra vez con tu traje.' : '');
     switch (c.k) {
       case 'steal': case 'thief': return who + ' quiere robarte tu ' + org(a.pid, a.idx) + '.';
       case 'swap': return who + ' quiere cambiar tu ' + org(a.pid, a.idx) + ' por un órgano suyo.';
@@ -3094,12 +3110,14 @@ if (typeof module !== 'undefined') module.exports = Bot;
   const scoreLine = () => { const r = scoreRows().filter(x => x.n > 0); return r.length ? '<p class="note scoreline">🏆 ' + r.map(x => esc(shortName(x.u)) + ' ' + x.n).join(' · ') + '</p>' : ''; };
 
   // ---------- reacciones rápidas ----------
-  const REACTS = ['😂', '👏', '😱', '😈', '🤝', '🔥'];
+  const REACTS = ['😂', '👏', '😱', '😈', '🤝', '🔥', '😢', '😡', '🤔', '😎', '🎉', '🙏'];
+  const PHRASES = ['¡Buena jugada!', '¡Ayúdame!', '¡Qué mala suerte!', '¡Cuidado!', '¡Apúrate!', '¡Gracias!'];
+  const okReact = e => REACTS.indexOf(e) >= 0 || PHRASES.indexOf(e) >= 0;
   const reactBtn = () => '<button class="menubtn rbtn' + (ui.react ? ' on' : '') + '" data-act="react" aria-label="Reacciones" aria-expanded="' + !!ui.react + '">😀</button>';
-  const reactTray = () => ui.react ? '<div class="reacttray">' + REACTS.map(e => '<button data-act="sendreact" data-e="' + e + '" aria-label="Enviar ' + e + '">' + e + '</button>').join('') + '</div>' : '';
+  const reactTray = () => ui.react ? '<div class="reacttray">' + REACTS.map(e => '<button data-act="sendreact" data-e="' + e + '" aria-label="Enviar ' + e + '">' + e + '</button>').join('') + '<div class="rphr">' + PHRASES.map(e => '<button data-act="sendreact" data-e="' + esc(e) + '">' + esc(e) + '</button>').join('') + '</div></div>' : '';
   let reactSeen = null, reactLast = 0;
   async function sendReact(e) {
-    if (!ref || !g || REACTS.indexOf(e) < 0) return;
+    if (!ref || !g || !okReact(e)) return;
     const now = Date.now(); ui.react = false;
     if (now - reactLast < 1200) return render();
     reactLast = now; render();
@@ -3109,16 +3127,18 @@ if (typeof module !== 'undefined') module.exports = Bot;
     if (!g || g.status === 'lobby') { reactSeen = null; return; }
     const R = g.react;
     if (reactSeen === null) { reactSeen = R && R.id ? [R.id] : []; return; } // no repetir lo anterior al entrar a la partida
-    if (!R || !R.id || reactSeen.indexOf(R.id) >= 0) return;
+    if (!R || !R.id || reactSeen.indexOf(R.id) >= 0 || !okReact(R.e)) return;
     reactSeen.push(R.id); if (reactSeen.length > 30) reactSeen.shift();
     if (typeof document.body.animate !== 'function' || document.hidden) return;
     const seat = document.querySelector('[data-seat="' + R.u + '"]'); if (!seat) return;
     const r = seat.getBoundingClientRect(), el = document.createElement('div');
-    el.className = 'rfx'; el.setAttribute('aria-hidden', 'true');
+    const txt = PHRASES.indexOf(R.e) >= 0;
+    el.className = 'rfx' + (txt ? ' txt' : ''); el.setAttribute('aria-hidden', 'true');
     el.innerHTML = '<span>' + esc(R.e) + '</span><small>' + esc(shortName(R.u)) + '</small>';
-    el.style.left = Math.max(8, Math.min(innerWidth - 60, r.left + r.width / 2 - 24)) + 'px'; el.style.top = Math.max(60, r.top - 6) + 'px';
     document.body.appendChild(el);
-    const an = el.animate([{ opacity: 0, transform: 'translateY(8px) scale(.5)' }, { opacity: 1, transform: 'translateY(-14px) scale(1.15)', offset: .18 }, { opacity: 1, transform: 'translateY(-46px) scale(1)', offset: .7 }, { opacity: 0, transform: 'translateY(-84px) scale(.95)' }], { duration: 2300, easing: 'ease-out' });
+    const w = el.offsetWidth || 48;
+    el.style.left = Math.max(8, Math.min(innerWidth - w - 8, r.left + r.width / 2 - w / 2)) + 'px'; el.style.top = Math.max(60, r.top - 6) + 'px';
+    const an = el.animate([{ opacity: 0, transform: 'translateY(8px) scale(.5)' }, { opacity: 1, transform: 'translateY(-14px) scale(1.15)', offset: .18 }, { opacity: 1, transform: 'translateY(-46px) scale(1)', offset: .7 }, { opacity: 0, transform: 'translateY(-84px) scale(.95)' }], { duration: txt ? 3200 : 2300, easing: 'ease-out' });
     an.onfinish = () => { if (el.parentNode) el.parentNode.removeChild(el); };
   }
 
@@ -3208,7 +3228,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
       case 'error': return 'Cambias todo tu cuerpo por el de otro jugador (órganos, virus y vacunas).';
       case 'overtime': return 'Juegas hasta 2 cartas más de tu mano en este mismo turno.';
       case 'second': return 'Cambias tu mano completa por la de otro jugador y juegas una de las cartas que recibes.';
-      case 'suit': return 'Cuando te lancen un virus, puedes usarla para rebotarlo a otro cuerpo (o descartarlo) y robas una carta. Solo protege contra virus, no contra otros tratamientos.';
+      case 'suit': return 'Cuando te lancen un virus, puedes usarla para rebotarlo a otro cuerpo (o descartarlo) y robas una carta. Si te lo rebotan y tienes otro traje, lo puedes rebotar otra vez. Solo protege contra virus, no contra otros tratamientos.';
       case 'quarantine': return 'Aíslas un virus de un órgano infectado: el virus sale de juego (la cuarentena) y el órgano queda libre.';
       case 'apparition': return 'Recuperas la última carta del descarte y puedes jugarla en este mismo turno.';
       case 'bodies': return 'Todos los cuerpos giran un lugar, en el sentido que elijas (horario o antihorario).';
