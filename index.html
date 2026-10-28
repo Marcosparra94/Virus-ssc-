@@ -6,7 +6,7 @@
 <title>Virus!</title>
 <meta name="description" content="Virus! el juego de cartas, en línea y sin cuentas">
 <meta name="theme-color" content="#0F473A">
-<script>window.VIRUS_BUILD='27-oct 21:30';</script>
+<script>window.VIRUS_BUILD='28-oct 00:47';</script>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -945,7 +945,13 @@ const Engine = (function () {
   function okSteal(g, u, pid, idx, color) { // color: Ladrón de colores (cualquier estado)
     const sl = g.bodies[pid] && g.bodies[pid][idx];
     if (!sl || pid === u) return false;
-    if (color) return sl.o.c === color && canReceive(g.bodies[u], sl.o, -1);
+    if (color) {
+      if (sl.o.c === color) return canReceive(g.bodies[u], sl.o, -1);
+      // El multicolor (sin convertir) también se puede robar con un Ladrón de colores, como si valiera de ese color:
+      // solo si ese color no se repite ni en el cuerpo de quien roba ni en el de la víctima (su multicolor no puede valer de un color que ya tiene)
+      if (sl.o.c === 'wild' && isColor(color)) return !g.bodies[u].some(s => s.o.c === color) && !g.bodies[pid].some((s, i) => i !== idx && s.o.c === color);
+      return false;
+    }
     return st(sl) !== 'immune' && canReceive(g.bodies[u], sl.o, -1);
   }
   function okSwap(g, u, myIdx, pid, idx) { // Trasplante: un órgano mío por uno de otro jugador, en cualquier estado
@@ -1000,6 +1006,7 @@ const Engine = (function () {
 
   // Para la interfaz: ¿es válido tocar este órgano? first = primer órgano elegido (trasplantes)
   function targetOK(g, u, c, pid, idx, first, mode, redir) {
+    if (redir && g.redirect && g.redirect.kind === 'spread') return spreadRedirCands(g).some(x => x.pid === pid && x.idx === idx);
     const ex = (redir && g.redirect) ? g.redirect.excluded : [];
     if (ex.indexOf(pid) >= 0 && !(c.t === 'x' && c.k === 'alien')) return false;
     if (c.t === 'o') return c.c === 'mutant' && pid === u && !!g.bodies[u][idx];
@@ -1175,6 +1182,7 @@ const Engine = (function () {
       switch (c.k) {
         case 'steal': case 'thief': {
           const sl = g.bodies[a.pid].splice(a.idx, 1)[0]; body.push(sl); D(c); ST('rob');
+          if (c.k === 'thief' && sl.o.c === 'wild') { L(nm(u) + ' roba el órgano multicolor de ' + nm(a.pid) + ' haciéndolo pasar por ' + ONAME[c.c].toLowerCase() + ' (sigue siendo multicolor)'); break; } // solo se hace de cuenta que es de ese color para poder robarlo
           L(nm(u) + ' roba ' + on(sl) + ' de ' + nm(a.pid)); break;
         }
         case 'swap': {
@@ -1191,7 +1199,8 @@ const Engine = (function () {
           const plan = Array.isArray(a.moves) ? a.moves.filter(m => prot.indexOf(m.p) < 0) : spreadPlan(g, u, prot);
           plan.forEach(m => { const sl = body[m.si]; const v = sl.m.find(x => x.t === 'v'); sl.m = sl.m.filter(x => x !== v); convert(g.bodies[m.p][m.i], v.c); g.bodies[m.p][m.i].m.push(v); });
           if (plan.length) ST('spr', plan.length);
-          D(c); L(nm(u) + ' contagia: pasa ' + plan.length + ' virus' + (plan.length ? ' (' + plan.map(m => 'a ' + nm(m.p)).join(', ') + ')' : '')); break;
+          const quedan = body.filter(sl => sl.m.some(x => x.t === 'v')).length; // virus que no tuvieron a dónde ir
+          D(c); L(nm(u) + ' contagia: pasa ' + plan.length + ' virus' + (plan.length ? ' (' + plan.map(m => 'a ' + nm(m.p)).join(', ') + ')' : '') + (quedan ? '; ' + quedan + (quedan === 1 ? ' se queda' : ' se quedan') + ' sin órgano libre donde caber' : '')); break;
         }
         case 'glove':
           g.order.forEach(p => { if (p === u || prot.indexOf(p) >= 0) return; g.discard.push(...g.hands[p]); g.hands[p] = []; g.skip[p] = true; });
@@ -1298,6 +1307,15 @@ const Engine = (function () {
     const e = check(g0, u, c, a, false);
     if (e) return { err: e };
     if (!opts.noSuit) {
+      if (c.t === 'x' && c.k === 'spread') { // Contagio: a quien le toque un virus y tenga traje se le pregunta, virus por virus (un traje rebota un solo virus)
+        const plan = Array.isArray(a.moves) ? a.moves : spreadPlan(g0, u, []);
+        if (plan.some(m => hasSuit(g0, m.p))) {
+          const g = clone(g0);
+          g.sp = { u, cardId, moves: plan.map(m => ({ si: m.si, p: m.p, i: m.i, dest: { p: m.p, i: m.i }, st: 'wait', chain: 0 })) };
+          g.log.push(g.players[u].name + ' juega Contagio');
+          return spNext(g);
+        }
+      }
       if (c.t === 'v' && a.pid !== u && hasSuit(g0, a.pid)) { // solo contra virus: se le pregunta al defensor
         const g = clone(g0);
         g.pending = { u, cardId, a, holders: [a.pid], decided: {}, since: Date.now() };
@@ -1311,6 +1329,7 @@ const Engine = (function () {
 
   // Un defensor decide si usa su Traje de protección
   function respond(g0, p, use) {
+    if (g0.pending && g0.pending.kind === 'spread') return respondSpread(g0, p, use);
     if (!g0.pending || g0.pending.holders.indexOf(p) < 0 || g0.pending.decided[p] !== undefined) return { err: 'No tienes nada que responder.' };
     const g = clone(g0);
     g.pending.decided[p] = !!use;
@@ -1320,12 +1339,14 @@ const Engine = (function () {
   }
   function expirePending(g0) {
     if (!g0.pending) return { err: 'Nada pendiente.' };
+    if (g0.pending.kind === 'spread') return respondSpread(g0, g0.pending.holders[0], false);
     const g = clone(g0);
     g.pending.holders.forEach(h => { if (g.pending.decided[h] === undefined) g.pending.decided[h] = false; });
     return resolvePending(g);
   }
 
   function redirectCandidates(g) { // jugadas alternativas válidas tras un Traje de protección
+    if (g.redirect && g.redirect.kind === 'spread') return spreadRedirCands(g);
     const R = g.redirect, u = R.u, c = g.hands[u].find(x => x.i === R.cardId), out = [];
     if (!c) return out;
     const tryA = a => { if (!check(g, u, c, a, true)) out.push(a); };
@@ -1348,6 +1369,70 @@ const Engine = (function () {
     g.redirect = null;
     return proceed(g, u, null);
   }
+  // ---------- Contagio con Traje de protección ----------
+  // g.sp: { u, cardId, moves: [{ si, p, i, dest: {p, i}, st: 'wait'|'done', chain }] }  (dest = a dónde va ahora ese virus)
+  const spOrigin = (S, m) => m.dest.p === S.u && m.dest.i === m.si; // el virus se queda en el órgano de quien contagió
+  function spNext(g) { // pregunta al siguiente destinatario que tenga traje, o cierra la jugada
+    const S = g.sp;
+    for (let k = 0; k < S.moves.length; k++) {
+      const m = S.moves[k];
+      if (m.st !== 'wait') continue;
+      if (!spOrigin(S, m) && hasSuit(g, m.dest.p)) {
+        g.pending = { u: S.u, cardId: S.cardId, kind: 'spread', mv: k, holders: [m.dest.p], decided: {}, since: Date.now(), chain: m.chain || 0 };
+        g.log.push(g.players[m.dest.p].name + ': le llegaría un virus por Contagio, ¿usa su traje?');
+        g.seq++;
+        return { g, pending: true };
+      }
+      m.st = 'done';
+    }
+    const fin = S.moves.filter(m => !spOrigin(S, m)).map(m => ({ si: m.si, p: m.dest.p, i: m.dest.i }));
+    const u = S.u, cardId = S.cardId; g.sp = null;
+    return run(g, u, cardId, { moves: fin }, []);
+  }
+  function respondSpread(g0, p, use) {
+    const P = g0.pending;
+    if (P.holders.indexOf(p) < 0 || P.decided[p] !== undefined) return { err: 'No tienes nada que responder.' };
+    const g = clone(g0), k = P.mv, m = g.sp.moves[k]; g.pending = null;
+    if (!use) { g.log.push(g.players[p].name + ' no usa su Traje de protección'); m.st = 'done'; return spNext(g); }
+    const i = g.hands[p].findIndex(c => c.t === 'x' && c.k === 'suit');
+    if (i < 0) { m.st = 'done'; return spNext(g); }
+    g.discard.push(g.hands[p].splice(i, 1)[0]); draw(g, p); // un traje rebota un solo virus; roba para volver a tener 3 cartas
+    g.log.push(g.players[p].name + ' usa un Traje de protección y roba una carta');
+    g.redirect = { u: g.sp.u, cardId: g.sp.cardId, kind: 'spread', mv: k, by: p, excluded: [p], chain: P.chain || 0, a: {} };
+    g.seq++;
+    return { g };
+  }
+  // A dónde puede rebotar ese virus: al órgano de origen (se queda con quien contagió) o a un órgano libre ajeno donde quepa
+  function spreadRedirCands(g) {
+    const R = g.redirect, S = g.sp, m = S && S.moves[R.mv], out = [];
+    if (!m) return out;
+    const sl = g.bodies[S.u][m.si], v = sl && sl.m.find(x => x.t === 'v');
+    if (!v) return out;
+    const taken = {}; S.moves.forEach((x, k) => { if (k !== R.mv) taken[x.dest.p + ':' + x.dest.i] = 1; });
+    out.push({ pid: S.u, idx: m.si });
+    g.order.forEach(pid => {
+      if (R.excluded.indexOf(pid) >= 0) return;
+      g.bodies[pid].forEach((o, i) => {
+        if ((pid === S.u && i === m.si) || taken[pid + ':' + i]) return;
+        if (st(o) === 'free' && hit(v.c, o.o.c) && !convBlocked(g, pid, o, v.c)) out.push({ pid, idx: i });
+      });
+    });
+    return out;
+  }
+  function redirectSpread(g0, who, a2, none) {
+    const R = g0.redirect;
+    if (!R || (R.by || R.u) !== who) return { err: 'Nada que redirigir.' };
+    const S0 = g0.sp, m0 = S0 && S0.moves[R.mv];
+    if (!m0) return { err: 'Nada que redirigir.' };
+    if (none) a2 = { pid: S0.u, idx: m0.si }; // sin objetivo: el virus se queda con quien contagió
+    if (!spreadRedirCands(g0).some(x => a2 && x.pid === a2.pid && x.idx === a2.idx)) return { err: 'Ese órgano no puede recibir el virus.' };
+    const g = clone(g0), S = g.sp, m = S.moves[R.mv], chain = R.chain || 0; g.redirect = null;
+    m.dest = { p: a2.pid, i: a2.idx };
+    const back = spOrigin(S, m);
+    g.log.push(g.players[who].name + ' rebota el virus ' + (back ? 'de vuelta con ' + g.players[S.u].name : 'hacia ' + g.players[a2.pid].name));
+    if (!back && chain < 8 && hasSuit(g, a2.pid)) m.chain = chain + 1; // cadena de trajes: ese jugador también puede rebotarlo
+    return spNext(g); // si el nuevo destinatario tiene traje, spNext le pregunta
+  }
   function resolvePending(g) {
     const P = g.pending, u = P.u, prot = [];
     P.holders.forEach(p => {
@@ -1359,6 +1444,7 @@ const Engine = (function () {
       } else g.log.push(g.players[p].name + ' no usa su Traje de protección');
     });
     P.holders.forEach(p => { if (P.decided[p] === false) g.log.push(g.players[p].name + ' deja pasar el virus'); });
+    const csp = g.hands[u].find(x => x.i === P.cardId); if (csp && csp.k === 'spread' && prot.length) g.log.push('El virus que iba a ' + prot.map(p => g.players[p].name).join(' y ') + ' se queda con ' + g.players[u].name);
     g.pending = null;
     const c = g.hands[u].find(x => x.i === P.cardId);
     if (!prot.length) return run(g, u, P.cardId, P.a, []);
@@ -1378,6 +1464,7 @@ const Engine = (function () {
   }
   // who = quien elige: el atacante (Traje contra otras cartas) o el defensor (Traje contra un virus)
   function redirect(g0, who, a2) {
+    if (g0.redirect && g0.redirect.kind === 'spread') return redirectSpread(g0, who, a2, false);
     const R = g0.redirect;
     if (!R || (R.by || R.u) !== who) return { err: 'Nada que redirigir.' };
     const c = g0.hands[R.u].find(x => x.i === R.cardId);
@@ -1394,6 +1481,7 @@ const Engine = (function () {
     return run(g, R.u, cardId, a2, []);
   }
   function noTarget(g0, who) {
+    if (g0.redirect && g0.redirect.kind === 'spread') return redirectSpread(g0, who, null, true);
     const R = g0.redirect;
     if (!R || (R.by || R.u) !== who) return { err: 'Nada que redirigir.' };
     const g = clone(g0);
@@ -1444,7 +1532,7 @@ const Engine = (function () {
 
   return {
     COLORS, ONAME, TNAME, COUNTS, shuffle, buildDeck, newGame, st, hit, mm, canReceive, healthy, goal, cursed, canWin, hasSuit,
-    targetOK, playerOK, check, victims, spreadPlan, spreadOptions, spreadMax, spreadChoices, okSpread, convBlocked, apply, respond, expirePending, redirect, noTarget, redirectCandidates,
+    targetOK, playerOK, check, spreadRedirCands, victims, spreadPlan, spreadOptions, spreadMax, spreadChoices, okSpread, convBlocked, apply, respond, expirePending, redirect, noTarget, redirectCandidates,
     discardCards, pass, timeoutTurn
   };
 })();
@@ -2201,6 +2289,7 @@ const Bot = (function () {
   function respond(g, p) {
     const P = g.pending;
     if (!P) return false;
+    if (P.kind === 'spread') { const cf = cfgOf(g, p); return (cf.rnd && Math.random() < cf.rnd) ? Math.random() < 0.5 : true; } // Contagio: casi siempre usa el traje (el fácil a veces no)
     const cfg = cfgOf(g, p), rk = cfg.risk ? risk(g, p) : 0;
     const g1 = JSON.parse(JSON.stringify(g)); g1.pending = null;
     const r = E.apply(g1, P.u, P.cardId, P.a, { noSuit: true });
@@ -2213,6 +2302,11 @@ const Bot = (function () {
   // who = quien elige (el atacante, o el defensor si rebota un virus).
   function redirect(g, who) {
     const R = g.redirect;
+    if (R && R.kind === 'spread') { // virus de Contagio rebotado: lo manda al rival que más cerca está de ganar (volver con quien contagió es la última opción)
+      const cs = E.redirectCandidates(g); let best = null;
+      cs.forEach(a => { const sc = (a.pid === R.u ? -50 : S(g, a.pid).h * 10 + 5) + Math.random() * 6; if (!best || sc > best.sc) best = { sc, a }; });
+      return best ? best.a : null;
+    }
     const cands = E.redirectCandidates(g);
     const cfg = cfgOf(g, who), rk = cfg.risk ? risk(g, who) : 0;
     let best = null;
@@ -2610,7 +2704,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
   // ¿El motor aceptaría jugar esta carta sin objetivo ahora mismo?
   const playableNow = c => !E.apply(g, me, c.i, {}, { noSuit: true }).err;
   // Contagio: pasas TODOS tus virus posibles; eliges, virus por virus, a qué órgano libre ajeno va
-  const needsNoTarget = c => (c.t === 'o' && !(c.c === 'mutant' && g.bodies[me].length)) || (c.t === 'x' && (['glove', 'overtime', 'apparition'].indexOf(c.k) >= 0 || (c.k === 'spread' && E.spreadMax(g, me) === 0)));
+  const needsNoTarget = c => (c.t === 'o' && !(c.c === 'mutant' && g.bodies[me].length)) || (c.t === 'x' && (['glove', 'overtime', 'apparition'].indexOf(c.k) >= 0 || (c.k === 'spread' && !(inRedir() && g.redirect.kind === 'spread') && E.spreadMax(g, me) === 0)));
   function spChoice() {
     if (!ui.first || !ui.first.sp) ui.first = { sp: 1, k: 0, moves: [] };
     const f = ui.first, list = E.spreadOptions(g, me);
@@ -2638,6 +2732,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
     const c = ui.sel;
     if (!c || ui.disc || !(canAct() || inRedir())) return false;
     if (c.t === 'x' && c.k === 'failed' && !ui.mode) return false;
+    if (inRedir() && g.redirect.kind === 'spread') return E.targetOK(g, g.redirect.u, c, pid, idx, null, null, true);
     if (c.t === 'x' && c.k === 'spread') return spTargets().some(t => t.p === pid && t.i === idx);
     return E.targetOK(g, inRedir() ? g.redirect.u : me, c, pid, idx, ui.first, ui.mode, inRedir());
   }
@@ -2658,6 +2753,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
       return;
     }
     if (!targetOK(pid, idx)) return;
+    if (inRedir() && g.redirect.kind === 'spread') return play({ pid, idx });
     if (c.t === 'x' && c.k === 'spread') return spAdvance({ p: pid, i: idx });
     if (c.t === 'x' && c.k === 'swap') {
       if (inRedir()) return play({ pid, idx, myIdx: g.redirect.a.myIdx });
@@ -2910,7 +3006,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
       '<p>Un virus infecta; una medicina cura o vacuna. Dos virus (normales o evolucionados) destruyen un órgano y dos medicinas (normales o experimentales) lo inmunizan.</p>' +
       '<p>Las medicinas normales solo curan virus normales; las experimentales curan también los evolucionados. Un virus evolucionado puede quitar cualquier vacuna; uno normal no puede quitar una experimental. Las cartas multicolor valen contra cualquier color, con la misma jerarquía. El órgano mutante solo lo afectan virus y medicinas multicolor.</p>' +
       '<p>Cada turno dura 30 segundos. Si no juegas a tiempo, se descarta tu mano y el juego sigue; tras dos turnos así, tus turnos duran 10 segundos hasta que vuelvas a jugar.</p>' +
-      '<p>Traje de protección: solo contra virus. Si te lanzan uno y lo tienes, te pregunta si lo usas (10 segundos; si no contestas, no se usa). Al usarlo robas una carta y eliges a quién rebotar el virus, o lo mandas al descarte. Si el virus rebota hacia alguien que también tiene traje (incluso quien lo lanzó), esa persona puede rebotarlo otra vez.</p>' +
+      '<p>Traje de protección: solo contra virus y contra Contagio. Si te lanzan un virus (o un Contagio te va a pasar uno) y tienes el traje, te pregunta si lo usas (10 segundos; si no contestas, no se usa). Al usarlo robas una carta. Cada traje rebota un solo virus. Contra un virus eliges a quién rebotarlo o lo mandas al descarte; contra Contagio eliges a quién rebotar ese virus (un órgano libre de otro jugador) o lo dejas con quien contagió. Si el virus rebota hacia alguien que también tiene traje (incluso quien lo lanzó), esa persona puede rebotarlo otra vez.</p>' +
       '<p>Contagio: pasas todos tus virus que puedas a órganos libres (sin virus ni vacunas) de otros jugadores; tú eliges adónde va cada uno.</p>' +
       '<p>Trasplante: cambias un órgano tuyo por uno de otro jugador, en cualquier estado. Trasplante alienígena: cambias entre sí órganos de otros dos jugadores (no tuyos).</p></details>';
   }
@@ -2990,6 +3086,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
     if (inRedir()) {
       const c = ui.sel;
       if (!c) return 'Elige un nuevo objetivo.';
+      if (g.redirect.kind === 'spread') return '<b>¡Traje de protección!</b> Toca a quién rebotarle ese virus (un órgano libre de otro jugador), o déjalo con <b>' + esc(shortName(g.redirect.u)) + '</b>, que contagió.';
       if (g.redirect.by) return '<b>¡Traje de protección!</b> Toca a quién rebotarle el virus (cualquier cuerpo menos el tuyo) o descártalo.';
       const where = (c.t === 'v' || c.k === 'failed') ? ' (puede ser tu propio cuerpo)' : '';
       return '<b>Traje de protección.</b> Elige otro objetivo' + where + ', o pulsa «Sin objetivo».';
@@ -3027,7 +3124,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
       case 'swap': return !ui.first ? 'Primero toca uno de tus órganos (aunque esté infectado, vacunado o inmunizado).' : 'Ahora toca el órgano rival que quieres recibir (en cualquier estado).';
       case 'alien': return !ui.first ? 'Toca un órgano de otro jugador (en cualquier estado). No sirve con los tuyos.' : 'Ahora toca un órgano de un jugador distinto (tampoco tuyo): se intercambian entre ellos.';
       case 'steal': return 'Toca el órgano rival que quieres robar.';
-      case 'thief': return 'Toca un órgano de ' + E.ONAME[c.c].toLowerCase() + ' de otro jugador (aunque esté inmunizado).';
+      case 'thief': return 'Toca un órgano de ' + E.ONAME[c.c].toLowerCase() + ' de otro jugador (aunque esté inmunizado), o su órgano multicolor si ni tú ni él tienen ya ' + E.ONAME[c.c].toLowerCase() + '.';
       case 'quarantine': return E.cursed(g, me) ? 'Toca un órgano infectado (tuyo o de otro) para aislar su virus.' : 'Toca uno de tus órganos infectados para aislar su virus.';
       case 'failed': return !ui.mode ? 'Elige si actúa como virus o como medicina.' : (ui.mode === 'v' ? 'Toca un órgano rival infectado o vacunado.' : 'Toca un órgano tuyo infectado o vacunado.');
       case 'error': return 'Toca al jugador con quien cambiarás de cuerpo.';
@@ -3054,7 +3151,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
     const cards = hand.map(c => cardHTML(c, { sel: ui.sel && ui.sel.i === c.i, dsel: ui.dsel.indexOf(c.i) >= 0 })).join('');
     let bar = '';
     if (inRedir()) {
-      bar = '<button class="btn alt" data-act="notarget">' + (g.redirect.by ? 'Descartar el virus' : 'Sin objetivo') + '</button>';
+      bar = '<button class="btn alt" data-act="notarget">' + (g.redirect.kind === 'spread' ? 'Que se quede con ' + esc(shortName(g.redirect.u)) : g.redirect.by ? 'Descartar el virus' : 'Sin objetivo') + '</button>';
     } else if (mt) {
       if (ui.disc) {
         bar = '<button class="btn" data-act="discgo"' + (ui.dsel.length ? '' : ' disabled') + '>Descartar' + (ui.dsel.length ? ' (' + ui.dsel.length + ')' : '') + '</button><button class="btn alt" data-act="cancel">Cancelar</button>';
@@ -3076,7 +3173,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
   }
 
   function describePending() {
-    const P = g.pending, c = g.hands[P.u].find(x => x.i === P.cardId), a = P.a, who = shortName(P.u);
+    const P = g.pending, c = g.hands[P.u].find(x => x.i === P.cardId), a = P.a || {}, who = shortName(P.u);
     const org = (pid, idx) => { const sl = g.bodies[pid] && g.bodies[pid][idx]; return sl ? E.ONAME[sl.o.c].toLowerCase() : 'órgano'; };
     if (!c) return who + ' te ataca.';
     if (c.t === 'v') return (P.chain ? '¡El virus' + (c.ev ? ' evolucionado' : '') + ' de ' + who + ' rebotó hacia ti! Va contra tu ' : who + ' juega un virus' + (c.ev ? ' evolucionado' : '') + ' contra tu ') + org(a.pid, a.idx) + '.' + (P.chain ? ' Puedes rebotarlo otra vez con tu traje.' : '');
@@ -3088,7 +3185,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
       case 'second': return who + ' quiere intercambiar su mano con la tuya.';
       case 'trick': return who + ' te lanza Truco o trato: no podrías ganar.';
       case 'glove': return who + ' juega Guante de látex: descartarías tu mano.';
-      case 'spread': return who + ' juega Contagio: te pasaría virus.';
+      case 'spread': { const mv = g.sp && g.sp.moves[P.mv], to = mv ? org(me, mv.dest.i) : 'órgano'; return P.chain ? '¡Un virus de ' + who + ' rebotó hacia ti! Va contra tu ' + to + '. Puedes rebotarlo con tu traje.' : who + ' juega Contagio: te pasaría un virus a tu ' + to + '. Un traje rebota un solo virus.'; }
       case 'bodies': return who + ' juega Cambio de cuerpos: perderías tu cuerpo.';
       case 'failed': return who + ' usa Experimento fallido contra tu ' + org(a.pid, a.idx) + '.';
     }
@@ -3228,12 +3325,12 @@ if (typeof module !== 'undefined') module.exports = Bot;
       case 'error': return 'Cambias todo tu cuerpo por el de otro jugador (órganos, virus y vacunas).';
       case 'overtime': return 'Juegas hasta 2 cartas más de tu mano en este mismo turno.';
       case 'second': return 'Cambias tu mano completa por la de otro jugador y juegas una de las cartas que recibes.';
-      case 'suit': return 'Cuando te lancen un virus, puedes usarla para rebotarlo a otro cuerpo (o descartarlo) y robas una carta. Si te lo rebotan y tienes otro traje, lo puedes rebotar otra vez. Solo protege contra virus, no contra otros tratamientos.';
+      case 'suit': return 'Cuando te lancen un virus, puedes usarla para rebotarlo a otro cuerpo (o descartarlo) y robas una carta. Si te lo rebotan y tienes otro traje, lo puedes rebotar otra vez. También sirve contra Contagio: rebota un solo virus (cada traje, uno), y tú eliges a quién. No protege contra otros tratamientos.';
       case 'quarantine': return 'Aíslas un virus de un órgano infectado: el virus sale de juego (la cuarentena) y el órgano queda libre.';
       case 'apparition': return 'Recuperas la última carta del descarte y puedes jugarla en este mismo turno.';
       case 'bodies': return 'Todos los cuerpos giran un lugar, en el sentido que elijas (horario o antihorario).';
       case 'alien': return 'Intercambias órganos entre dos jugadores distintos de ti, en cualquier estado.';
-      case 'thief': return 'Robas un órgano de ' + col + ' de otro jugador, aunque esté inmunizado.';
+      case 'thief': return 'Robas un órgano de ' + col + ' de otro jugador, aunque esté inmunizado. También puedes robar un órgano multicolor si ni tú ni su dueño tienen ya ' + col + ': se hace de cuenta que es de ese color para robarlo, pero en tu cuerpo sigue siendo multicolor.';
       case 'failed': return 'Actúa como un virus sobre un órgano rival infectado o vacunado, o como una medicina sobre un órgano tuyo infectado o vacunado.';
       case 'trick': return 'El jugador que elijas queda maldito: no puede ganar hasta que se libre de la maldición.';
     }
