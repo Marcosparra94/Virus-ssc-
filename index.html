@@ -6,7 +6,7 @@
 <title>Virus!</title>
 <meta name="description" content="Virus! el juego de cartas, en línea y sin cuentas">
 <meta name="theme-color" content="#0F473A">
-<script>window.VIRUS_BUILD='29-oct 20:03';</script>
+<script>window.VIRUS_BUILD='01-nov 17:24';</script>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -367,6 +367,13 @@ details.log div { padding: 2px 0; }
 .reacttray .rphr button { width: auto; height: 34px; padding: 0 10px; font-size: 13px; font-weight: 700; color: #fff; }
 .rfx.txt { width: auto; max-width: 220px; }
 .rfx.txt span { font-size: 15px; font-weight: 800; background: #fff; color: #12212C; padding: 6px 12px; border-radius: 14px; filter: drop-shadow(0 4px 6px rgba(0, 0, 0, .4)); white-space: nowrap; }
+
+/* ---- partidas anteriores ---- */
+.hbl { display: flex; flex-direction: column; gap: 6px; max-height: 52vh; overflow: auto; }
+.hbrow { display: flex; flex-direction: column; gap: 2px; text-align: left; width: 100%; border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 12px; padding: 9px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+.hbrow b { font-size: 14px; } .hbrow .hbm { opacity: .75; }
+.hbtext { max-height: 44vh; overflow: auto; }
+.hbtext li { padding: 3px 0; font-size: 13px; } .hbtext .hbfin { margin-top: 8px; border-top: 1px solid var(--line); padding-top: 6px; }
 
 </style>
 </head>
@@ -1152,6 +1159,8 @@ const Engine = (function () {
     const nm = p => g.players[p].name, L = s => g.log.push(s);
     const D = (...cs) => g.discard.push(...cs.map(unconvert)), Q = (...cs) => g.quarantine.push(...cs);
     const on = sl => ONAME[sl.o.c].toLowerCase();
+    const dsc = sl => { const s = st(sl), v = sl.m.find(x => x.t === 'v'); return on(sl) + (s === 'infected' ? ' (infectado' + (v && v.ev ? ' con virus evolucionado' : '') + ')' : s === 'vacc' ? ' (vacunado' + (sl.m[0] && sl.m[0].ex ? ' con vacuna experimental' : '') + ')' : s === 'immune' ? ' (inmune)' : ''); };
+    const binfo = p => { const b = g.bodies[p], n = b.filter(x => st(x) === 'infected').length; return b.length + (b.length === 1 ? ' órgano' : ' órganos') + (n ? ', ' + n + (n === 1 ? ' infectado' : ' infectados') : ''); };
     let start = null;
     const ST = (k, n) => { g.stats = g.stats || {}; const t = g.stats[u] = g.stats[u] || {}; t[k] = (t[k] || 0) + (n || 1); }; // estadísticas de la partida
     const EV = ev => { if (g.last) g.last.ev = ev; const m = { infect: 'inf', destroy: 'des', cure: 'cur', vaccinate: 'vac', immunize: 'vac' }[ev]; if (m) ST(m); }; // qué pasó, para los efectos de sonido (infección, curación, destrucción...)
@@ -1189,17 +1198,17 @@ const Engine = (function () {
         case 'steal': case 'thief': {
           const sl = g.bodies[a.pid].splice(a.idx, 1)[0]; body.push(sl); D(c); ST('rob');
           if (c.k === 'thief' && sl.o.c === 'wild') { L(nm(u) + ' roba el órgano multicolor de ' + nm(a.pid) + ' haciéndolo pasar por ' + ONAME[c.c].toLowerCase() + ' (sigue siendo multicolor)'); break; } // solo se hace de cuenta que es de ese color para poder robarlo
-          L(nm(u) + ' roba ' + on(sl) + ' de ' + nm(a.pid)); break;
+          L(nm(u) + ' roba ' + dsc(sl) + ' de ' + nm(a.pid)); break;
         }
         case 'swap': {
           const mine = body[a.myIdx], theirs = g.bodies[a.pid][a.idx];
           body[a.myIdx] = theirs; g.bodies[a.pid][a.idx] = mine; D(c);
-          L(nm(u) + ' cambia ' + on(mine) + ' por ' + on(theirs) + ' de ' + nm(a.pid)); break;
+          L(nm(u) + ' cambia su ' + dsc(mine) + ' por ' + dsc(theirs) + ' de ' + nm(a.pid)); break;
         }
         case 'alien': {
           const s1 = g.bodies[a.p1][a.i1], s2 = g.bodies[a.p2][a.i2];
           g.bodies[a.p1][a.i1] = s2; g.bodies[a.p2][a.i2] = s1; D(c);
-          L(nm(u) + ' intercambia ' + on(s1) + ' de ' + nm(a.p1) + ' por ' + on(s2) + ' de ' + nm(a.p2)); break;
+          L(nm(u) + ' intercambia ' + dsc(s1) + ' de ' + nm(a.p1) + ' por ' + dsc(s2) + ' de ' + nm(a.p2)); break;
         }
         case 'spread': {
           const plan = Array.isArray(a.moves) ? a.moves.filter(m => prot.indexOf(m.p) < 0) : spreadPlan(g, u, prot);
@@ -1217,12 +1226,12 @@ const Engine = (function () {
         case 'glove':
           g.order.forEach(p => { if (p === u || prot.indexOf(p) >= 0) return; g.discard.push(...g.hands[p]); g.hands[p] = []; g.skip[p] = true; });
           D(c); L(nm(u) + ' usa el guante de látex: los demás descartan su mano'); break;
-        case 'error': { const map = {}; map[u] = a.pid; map[a.pid] = u; permute(g, map); D(c); L(nm(u) + ' intercambia su cuerpo con el de ' + nm(a.pid)); break; }
+        case 'error': { const map = {}; map[u] = a.pid; map[a.pid] = u; const iu = binfo(u), ip = binfo(a.pid); permute(g, map); D(c); L(nm(u) + ' intercambia su cuerpo (' + iu + ') con el de ' + nm(a.pid) + ' (' + ip + ')'); break; }
         case 'bodies': {
           const part = g.order.filter(p => prot.indexOf(p) < 0), n = part.length, map = {};
           if (n > 1) part.forEach((p, i) => { map[part[(i + a.dir + n) % n]] = p; });
           if (n > 1) permute(g, map);
-          D(c); L(nm(u) + ' cambia los cuerpos en sentido ' + (a.dir === 1 ? 'horario' : 'antihorario')); break;
+          D(c); L(nm(u) + ' cambia los cuerpos en sentido ' + (a.dir === 1 ? 'horario' : 'antihorario') + ': ' + part.map(p => nm(p) + ' (' + binfo(p) + ')').join('; ')); break;
         }
         case 'second': {
           const tmp = g.hands[u]; g.hands[u] = g.hands[a.pid]; g.hands[a.pid] = tmp; D(c);
@@ -2361,7 +2370,8 @@ if (typeof module !== 'undefined') module.exports = Bot;
   const avName = av => hasAv(av) ? Avatars.name(av) : String(av || '');
   const store = {
     get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
-    set(k, v) { try { localStorage.setItem(k, v); } catch (e) { } }
+    set(k, v) { try { localStorage.setItem(k, v); } catch (e) { } },
+    del(k) { try { localStorage.removeItem(k); } catch (e) { } }
   };
   const VIRUS = '<circle cx="12" cy="12" r="5"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l2.8 2.8M16.2 16.2L19 19M19 5l-2.8 2.8M7.8 16.2L5 19" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>';
 
@@ -3047,7 +3057,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
       '<div class="note" style="text-align:center">o entra a una sala</div>' +
       '<div class="row"><input id="cd" class="code-in" type="text" maxlength="4" autocomplete="off" placeholder="CÓDIGO" value="' + esc(ui.code) + '">' +
       '<button class="btn alt" data-act="join"' + (db ? '' : ' disabled') + '>Entrar</button></div>' +
-      (ui.err ? '<p class="err">' + esc(ui.err) + '</p>' : '') + note + '</div>' + '<div class="card-box">' + statsBtn() + '</div>' + verBox() + rulesHTML();
+      (ui.err ? '<p class="err">' + esc(ui.err) + '</p>' : '') + note + '</div>' + '<div class="card-box">' + statsBtn() + histBtn() + '</div>' + verBox() + rulesHTML();
   }
 
   const OPTS = [
@@ -3080,7 +3090,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
         '<p class="note" style="margin:8px 0 0">' + (P2P ? 'Tu navegador es el anfitrión: no cierres esta página mientras juegan (si la cierras, al reabrirla la partida continúa).' : 'Los bots juegan desde tu navegador: deja esta página abierta mientras juegan.') + '</p>' : '') + '</div>' +
       scoreBox() +
       turnBox() + botsBox() +
-      '<div class="card-box">' + statsBtn() + '</div>' +
+      '<div class="card-box">' + statsBtn() + histBtn() + '</div>' +
       voiceBox() +
       '<div class="card-box"><h3>' + (typeof Sfx !== 'undefined' ? 'Sonido y avisos' : 'Avisos') + '</h3><div class="stack">' + alertsRow() + '</div></div>' +
       '<div class="card-box"><h3>Tu avatar</h3>' + photoRow() + '<div class="avgrid">' + picker + '</div></div>' +
@@ -3368,6 +3378,83 @@ if (typeof module !== 'undefined') module.exports = Bot;
   }
 
 
+
+  // ---------- partidas anteriores (el «historial de historiales», se guarda en este teléfono) ----------
+  const HK = 'virus.hist', HMAX = 20, HLINES = 1200;
+  const H = { rec: null, lines: [], prev: [], seq: -1, st: '', timer: null };
+  function hIdx() { try { const x = JSON.parse(store.get(HK) || '[]'); return Array.isArray(x) ? x : []; } catch (e) { return []; } }
+  function hLines(id) { try { const x = JSON.parse(store.get('virus.hist.' + id) || '[]'); return Array.isArray(x) ? x.filter(l => typeof l === 'string') : []; } catch (e) { return []; } }
+  function hFlush() {
+    if (H.timer) { clearTimeout(H.timer); H.timer = null; }
+    if (!H.rec) return;
+    const idx = hIdx().filter(r => r.id !== H.rec.id); idx.unshift(H.rec);
+    while (idx.length > HMAX) { const old = idx.pop(); store.del('virus.hist.' + old.id); }
+    store.set(HK, JSON.stringify(idx)); store.set('virus.hist.' + H.rec.id, JSON.stringify(H.lines.slice(-HLINES)));
+  }
+  const hSchedule = () => { if (!H.timer) H.timer = setTimeout(hFlush, 1200); };
+  const hOpts = o => { o = o || {}; const t = []; if (o.evo) t.push('Evolution'); if (o.hall) t.push('Halloween'); if (o.duel) t.push('Duelo'); if (o.epidemic) t.push('Epidemia'); return (t.length ? t.join(' + ') : 'Virus! clásico') + (o.turn !== undefined ? ' · turno ' + (o.turn ? o.turn + ' s' : 'sin límite') : ''); };
+  function hFinal() {
+    return g.order.map(u => g.players[u].name + ': ' + (g.bodies[u].map(s => { const sx = E.st(s), v = s.m.find(x => x.t === 'v'); return E.ONAME[s.o.c] + (sx === 'infected' ? ' (infectado' + (v && v.ev ? ' con virus evolucionado' : '') + ')' : sx === 'vacc' ? ' (vacunado)' : sx === 'immune' ? ' (inmune)' : ''); }).join(', ') || 'sin órganos'));
+  }
+  function histTrack() { // cada teléfono va guardando las jugadas completas (el juego solo conserva las últimas 80)
+    if (!g || !Array.isArray(g.log) || !g.players) return;
+    if (g.status === 'lobby') { if (H.rec) hFlush(); H.rec = null; H.lines = []; H.prev = []; H.seq = -1; H.st = ''; return; }
+    if (g.status !== 'playing' && g.status !== 'ended') return;
+    const seq = g.seq || 0;
+    if (H.rec && H.rec.code === g.code && seq === H.seq && g.status === H.st) return;
+    const fresh = !H.rec || H.rec.code !== g.code || seq < H.seq || (H.rec.ended && g.status === 'playing');
+    if (fresh) {
+      if (H.rec) hFlush();
+      H.rec = { id: g.code + '-' + Date.now().toString(36), code: g.code, t0: Date.now(), t1: 0, ended: false, win: '', n: 0, ver: window.VIRUS_BUILD || '', op: hOpts(g.opts), late: seq > 4 ? 1 : 0,
+        pl: g.order.map(u => ({ n: g.players[u].name, b: g.players[u].bot ? 1 : 0, me: u === me ? 1 : 0 })) };
+      H.lines = []; H.prev = [];
+    }
+    const cur = g.log; let m = 0;
+    for (let k = Math.min(H.prev.length, cur.length); k > 0; k--) { let same = true; for (let j = 0; j < k; j++) { if (H.prev[H.prev.length - k + j] !== cur[j]) { same = false; break; } } if (same) { m = k; break; } }
+    if (H.prev.length && !m && cur.length) H.lines.push('… (se perdieron algunas jugadas por la conexión) …');
+    for (let j = m; j < cur.length; j++) H.lines.push(cur[j]);
+    H.prev = cur.slice(); H.seq = seq; H.st = g.status; H.rec.n = H.lines.length;
+    if (g.status === 'ended' && !H.rec.ended) { H.rec.ended = true; H.rec.t1 = Date.now(); H.rec.win = g.players[g.winner] ? g.players[g.winner].name : ''; H.rec.fin = hFinal(); hFlush(); }
+    else hSchedule();
+  }
+  window.addEventListener('pagehide', () => { try { hFlush(); } catch (e) { } });
+  const fmtDate = t => { try { return new Date(t).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } };
+  const histBtn = () => '<button class="btn alt" data-act="hb">📚 Partidas anteriores</button>';
+  function hText(r, lines) {
+    return ['Virus! — partida de la sala ' + r.code + ' (' + fmtDate(r.t0) + ')', 'Versión del juego: ' + (r.ver || '?') + ' · Reglas: ' + (r.op || '?'),
+      'Jugadores: ' + (r.pl || []).map(p => p.n + (p.b ? ' (bot)' : '') + (p.me ? ' (yo)' : '')).join(', '), r.ended ? 'Ganó: ' + (r.win || '?') : 'La partida no se terminó', r.late ? '(Esta copia empezó a guardarse a media partida)' : '',
+      '--- Jugadas ---'].filter(Boolean).concat(lines, r.fin ? ['--- Estado final ---'].concat(r.fin) : []).join('\n');
+  }
+  function histBrowserHTML() {
+    if (!ui.hb) return '';
+    const idx = hIdx();
+    let head, body;
+    if (ui.hb === 'list') {
+      head = '<h3>📚 Partidas anteriores</h3>';
+      body = idx.length ? '<div class="hbl">' + idx.map(r => '<button class="hbrow" data-act="hbopen" data-id="' + esc(r.id) + '"><b>' + esc(fmtDate(r.t0)) + ' · sala ' + esc(r.code) + '</b><span>' + esc((r.pl || []).map(p => p.n + (p.b ? ' 🤖' : '')).join(', ')) + '</span><span class="hbm">' + (r.ended ? 'Ganó ' + esc(r.win || '?') : 'No se terminó') + ' · ' + (r.n || 0) + ' jugadas</span></button>').join('') + '</div>' +
+          '<button class="btn alt" data-act="hbdelall" style="margin-top:10px">' + (ui.hbConfirm === 'all' ? '¿Seguro? Toca otra vez para borrar todo' : 'Borrar todas') + '</button>'
+        : '<p class="note">Todavía no hay partidas guardadas. Aquí se guardan las jugadas de tus últimas ' + HMAX + ' partidas, completas, para revisarlas después si hay dudas con una regla.</p>';
+      body += '<p class="note" style="margin:8px 0 0">Se guardan solo en este teléfono.</p>';
+    } else {
+      const r = idx.find(x => x.id === ui.hb);
+      if (!r) { ui.hb = 'list'; return histBrowserHTML(); }
+      const lines = (H.rec && H.rec.id === r.id) ? H.lines : hLines(r.id);
+      head = '<h3>🗒️ Sala ' + esc(r.code) + '</h3>';
+      body = '<p class="note" style="margin:0 0 6px">' + esc(fmtDate(r.t0)) + ' · versión ' + esc(r.ver || '?') + '<br>' + esc(r.op || '') + '<br>' + esc((r.pl || []).map(p => p.n + (p.b ? ' 🤖' : '')).join(', ')) + '<br><b>' + (r.ended ? 'Ganó ' + esc(r.win || '?') : 'No se terminó') + '</b>' + (r.late ? ' · se empezó a guardar a media partida' : '') + '</p>' +
+        '<ol class="histlist hbtext">' + lines.map(l => '<li><span>' + esc(l) + '</span></li>').join('') + (r.fin ? '<li class="hbfin"><b>Estado final</b></li>' + r.fin.map(l => '<li><span>' + esc(l) + '</span></li>').join('') : '') + '</ol>' +
+        '<div class="bar wrapbar" style="margin-top:10px"><button class="btn" data-act="hbcopy">' + (ui.hbCopied ? '¡Copiado!' : '📋 Copiar texto') + '</button>' + (navigator.share ? '<button class="btn alt" data-act="hbshare">📤 Compartir</button>' : '') +
+        '<button class="btn alt" data-act="hbdel">' + (ui.hbConfirm === r.id ? '¿Seguro? Toca otra vez' : '🗑️ Borrar esta partida') + '</button></div>';
+    }
+    return '<div class="overlay histov" data-act="hbclose"><div class="card-box histbox"><div class="histhead">' + (ui.hb !== 'list' ? '<button class="menubtn" data-act="hbback" aria-label="Volver">←</button>' : '') + head + '<button class="menubtn" data-act="hbclose" aria-label="Cerrar">✕</button></div>' + body + '</div></div>';
+  }
+  async function hCopy() {
+    const idx = hIdx(), r = idx.find(x => x.id === ui.hb); if (!r) return;
+    const txt = hText(r, (H.rec && H.rec.id === r.id) ? H.lines : hLines(r.id));
+    try { await navigator.clipboard.writeText(txt); }
+    catch (e) { try { const ta = document.createElement('textarea'); ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); } catch (e2) { return; } }
+    ui.hbCopied = true; render(); setTimeout(() => { ui.hbCopied = false; if (ui.hb) render(); }, 1800);
+  }
+
   // ---------- estadísticas guardadas en este teléfono ----------
   const STAT0 = () => ({ g: 0, w: 0, l: 0, s: 0, b: 0, last: [] });
   function loadStats() {
@@ -3502,7 +3589,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
     return '<div class="menupanel">' +
       (host ? '<button class="btn alt" data-act="menu-reset">' + (c === 'reset' ? '¿Seguro? Toca otra vez para reiniciar' : 'Reiniciar: volver a la sala de espera') + '</button>' +
         '<p class="note">Sirve si alguien se fue y quieres empezar otra partida. En la sala de espera puedes quitar a quien ya no esté.</p>' : '') +
-      '<button class="btn alt" data-act="hist">📜 Ver historial de jugadas</button>' + statsBtn() + alertsRow() +
+      '<button class="btn alt" data-act="hist">📜 Ver historial de jugadas</button>' + statsBtn() + histBtn() + alertsRow() +
       '<button class="btn alt" data-act="menu-leave">' + (c === 'leave' ? '¿Seguro? Toca otra vez para salir' : leaveLbl) + '</button>' +
       (heir ? '<button class="btn alt" data-act="menu-close">' + (c === 'close' ? '¿Seguro? Toca otra vez para cerrar' : 'Cerrar la sala para todos') + '</button>' : '') +
       (heir ? '<p class="note">Si sales, la partida sigue con los demás y tu lugar queda como ausente.</p>' : (!(P2P && host) ? '<p class="note">Si sales, los demás siguen sin ti. Puedes volver a entrar con el código.</p>' : '')) + '</div>';
@@ -3573,14 +3660,14 @@ if (typeof module !== 'undefined') module.exports = Bot;
   }
   function render() {
     const fxNew = fxDetect();
-    reactDetect(); alertDetect(); sfxEndDetect(); statsEndDetect(); syncStats();
+    reactDetect(); alertDetect(); sfxEndDetect(); statsEndDetect(); syncStats(); histTrack();
     if (!g || g.status !== 'playing') { seen.clear(); seenReady = false; }
     renderIds = [];
     let html;
     if (!g) html = entryHTML();
     else if (g.status === 'lobby') html = lobbyHTML();
     else html = gameHTML();
-    app.innerHTML = (g ? netBanner() : '') + html + statsHTML() + shareHTML();
+    app.innerHTML = (g ? netBanner() : '') + html + statsHTML() + histBrowserHTML() + shareHTML();
     renderIds.forEach(i => seen.add(i));
     if (g && g.status === 'playing') seenReady = true;
     document.title = (g && (myTurn() || iDefend() || inRedir())) ? '¡Tu turno! Virus!' : 'Virus!';
@@ -3628,6 +3715,14 @@ if (typeof module !== 'undefined') module.exports = Bot;
     if (act === 'notifperm') return askNotif();
     if (act === 'sfx') { store.set('virus.sfx', sfxOn() ? '0' : '1'); if (sfxOn()) { if (typeof Sfx !== 'undefined') Sfx.unlock(); sfxPlay('med'); } return render(); }
     if (act === 'hist') { ui.hist = true; ui.menu = false; return render(); }
+    if (act === 'hb') { ui.hb = 'list'; ui.menu = false; ui.hbConfirm = null; return render(); }
+    if (act === 'hbclose') { if (t.classList.contains('histov') && e.target !== t) return; ui.hb = null; ui.hbConfirm = null; return render(); }
+    if (act === 'hbback') { ui.hb = 'list'; ui.hbConfirm = null; return render(); }
+    if (act === 'hbopen') { ui.hb = t.dataset.id; ui.hbConfirm = null; return render(); }
+    if (act === 'hbcopy') return hCopy();
+    if (act === 'hbshare') { const r = hIdx().find(x => x.id === ui.hb); if (r) { try { navigator.share({ title: 'Virus! sala ' + r.code, text: hText(r, (H.rec && H.rec.id === r.id) ? H.lines : hLines(r.id)) }); } catch (e) { } } return; }
+    if (act === 'hbdel') { if (ui.hbConfirm !== ui.hb) { ui.hbConfirm = ui.hb; return render(); } const id = ui.hb; if (H.rec && H.rec.id === id) { H.rec = null; H.lines = []; H.prev = []; } store.set(HK, JSON.stringify(hIdx().filter(r => r.id !== id))); store.del('virus.hist.' + id); ui.hb = 'list'; ui.hbConfirm = null; return render(); }
+    if (act === 'hbdelall') { if (ui.hbConfirm !== 'all') { ui.hbConfirm = 'all'; return render(); } hIdx().forEach(r => store.del('virus.hist.' + r.id)); store.set(HK, '[]'); if (H.rec) { hFlush(); } ui.hbConfirm = null; return render(); }
     if (act === 'histclose') { if (t.classList.contains('histov') && e.target !== t) return; ui.hist = false; return render(); }
     if (act === 'helpclose') { ui.help = null; return render(); }
     if (act === 'reload') { try { location.reload(); } catch (e) { } return; }
