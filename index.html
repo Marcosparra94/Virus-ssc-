@@ -6,7 +6,7 @@
 <title>Virus!</title>
 <meta name="description" content="Virus! el juego de cartas, en línea y sin cuentas">
 <meta name="theme-color" content="#0F473A">
-<script>window.VIRUS_BUILD='01-nov 17:24';</script>
+<script>window.VIRUS_BUILD='02-nov 20:38';</script>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -927,7 +927,7 @@ const Engine = (function () {
     if (!sl) return false;
     if (pid === u && !allowSelf) return false;
     const s = st(sl);
-    if (c.failed) return (s === 'infected' || (s === 'vacc' && !sl.m[0].ex)) && sl.o.c !== 'bionic';
+    if (c.failed) return (s === 'infected' || s === 'vacc') && sl.o.c !== 'bionic'; // como virus destruye un órgano infectado o quita cualquier vacuna, también las experimentales
     if (!hit(c.c, sl.o.c) || s === 'immune') return false;
     if (s === 'vacc' && !c.ev && sl.m[0].ex) return false; // un virus normal no puede quitar una vacuna experimental
     if (s === 'free' && convBlocked(g, pid, sl, c.c)) return false;
@@ -3354,7 +3354,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
       case 'bodies': return 'Todos los cuerpos giran un lugar, en el sentido que elijas (horario o antihorario).';
       case 'alien': return 'Intercambias órganos entre dos jugadores distintos de ti, en cualquier estado.';
       case 'thief': return 'Robas un órgano de ' + col + ' de otro jugador, aunque esté inmunizado. También puedes robar un órgano multicolor si ni tú ni su dueño tienen ya ' + col + ': se hace de cuenta que es de ese color para robarlo, pero en tu cuerpo sigue siendo multicolor.';
-      case 'failed': return 'Actúa como un virus sobre un órgano rival infectado o vacunado, o como una medicina sobre un órgano tuyo infectado o vacunado. Como medicina cura cualquier virus, también los evolucionados.';
+      case 'failed': return 'Actúa como un virus sobre un órgano rival infectado o vacunado, o como una medicina sobre un órgano tuyo infectado o vacunado. Como virus quita cualquier vacuna, también las experimentales. Como medicina cura cualquier virus, también los evolucionados.';
       case 'trick': return 'El jugador que elijas queda maldito: no puede ganar hasta que se libre de la maldición.';
     }
     return '';
