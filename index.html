@@ -6,7 +6,7 @@
 <title>Virus!</title>
 <meta name="description" content="Virus! el juego de cartas, en línea y sin cuentas">
 <meta name="theme-color" content="#0F473A">
-<script>window.VIRUS_BUILD='06-nov 04:10';</script>
+<script>window.VIRUS_BUILD='06-nov 22:02';</script>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -405,6 +405,20 @@ details.log div { padding: 2px 0; }
 .avcell { text-align: center; min-width: 0; }
 .avcell .avbtn { width: 100%; }
 .avnm { display: block; margin-top: 3px; font-size: 10px; line-height: 1.15; color: var(--mute); overflow-wrap: anywhere; }
+
+/* 2 vs 2: equipos en la sala y marca junto al nombre */
+.teams { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.tmcol { border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; background: var(--bg); }
+.tmcol.t0 { border-color: #3E73D8; } .tmcol.t1 { border-color: #F28A2B; }
+.tmcol h4 { margin: 0 0 6px; font-size: 14px; }
+.tmcol ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.tmcol li { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.tmn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+.tmcol .btn.sm { padding: 4px 9px; min-height: 0; }
+.tmb { font-size: .8em; margin-left: 2px; }
+/* frases especiales de los avatares de «Nosotros» */
+.rphr.nos { margin-top: 8px; border-top: 1px dashed var(--line); padding-top: 6px; }
+.rlbl { display: block; width: 100%; font-size: 11px; color: var(--mute); margin-bottom: 2px; }
 
 </style>
 </head>
@@ -866,7 +880,8 @@ const Engine = (function () {
     if (o.evo) { // Virus! 2 Evolution: 33 cartas
       COLORS.forEach(c => { add('o', c, null, 1); add('v', c, null, 2, { ev: 1 }); add('m', c, null, 1, { ex: 1 }); });
       add('o', 'bionic', null, 1); add('v', 'wild', null, 1, { ev: 1 }); add('m', 'wild', null, 3, { ex: 1 });
-      add('x', null, 'overtime', 2); add('x', null, 'second', 2); add('x', null, 'suit', 4); add('x', null, 'quarantine', 4);
+      if (!o.yamevoy) add('x', null, 'overtime', 2); // en «Ya me voy» ya se juegan dos cartas por turno: no hay Horas extra
+      add('x', null, 'second', 2); add('x', null, 'suit', 4); add('x', null, 'quarantine', 4);
     }
     if (o.hall) { // Virus! Halloween: 12 cartas
       COLORS.forEach(c => add('x', c, 'thief', 1));
@@ -904,18 +919,31 @@ const Engine = (function () {
   const goal = g => (g.opts && g.opts.duel && g.opts.evo && g.order.length === 2) ? 5 : 4;
   const canWin = (g, u) => healthy(g, u) >= goal(g) && !cursed(g, u);
   const hasSuit = (g, p) => g.hands[p].some(c => c.t === 'x' && c.k === 'suit');
+  // 2 vs 2: g.teams = { jugador: 0|1 }. Compañeros de equipo no se atacan entre sí.
+  const mate = (g, a, b) => !!(g.teams && a !== b && g.teams[a] !== undefined && g.teams[a] === g.teams[b]);
+  const actor = (g, u, redir) => (redir && g.redirect && g.redirect.by) || u; // quien elige el destino: el defensor que rebota un virus, o el atacante
   const opt = (g, k) => !!(g.opts && g.opts[k]);
 
   function newGame(g0) {
     const ids = Object.keys(g0.players);
-    const order = shuffle(ids);
-    const opts = Object.assign({ evo: false, hall: false, duel: false, epidemic: false }, g0.opts || {});
+    const opts = Object.assign({ evo: false, hall: false, duel: false, epidemic: false, yamevoy: false, teams: false }, g0.opts || {});
+    let order = shuffle(ids), teams = null;
+    if (opts.teams && ids.length === 4) { // 2 vs 2: los equipos se sientan alternados (A, B, A, B) para que los turnos vayan de un equipo al otro
+      const tm = {}; ids.forEach(u => { tm[u] = g0.players[u] && g0.players[u].team; });
+      const t0 = shuffle(ids.filter(u => tm[u] === 0)), t1 = shuffle(ids.filter(u => tm[u] === 1));
+      if (t0.length === 2 && t1.length === 2) {
+        order = Math.random() < .5 ? [t0[0], t1[0], t0[1], t1[1]] : [t1[0], t0[0], t1[1], t0[1]];
+        teams = {}; order.forEach((u, i) => { teams[u] = i % 2; }); // 0 = equipo de los asientos 1 y 3, 1 = equipo de los asientos 2 y 4
+        order.forEach(u => { teams[u] = tm[u]; });
+      } else { teams = {}; order.forEach((u, i) => { teams[u] = i % 2; }); }
+    } else opts.teams = false;
     const g = {
       code: g0.code, host: g0.host, players: g0.players, opts,
       status: 'playing', order, deck: shuffle(buildDeck(opts)), discard: [], quarantine: [],
       hands: {}, bodies: {}, skip: {}, idle: {}, turn: 0, winner: null, curse: null, extra: null, pending: null, redirect: null,
       log: ['Empieza la partida'], seq: 0, score: g0.score || {}
     };
+    if (teams) g.teams = teams;
     order.forEach(u => { g.hands[u] = []; g.bodies[u] = []; });
     for (let k = 0; k < 3; k++) order.forEach(u => g.hands[u].push(g.deck.pop()));
     return g;
@@ -938,6 +966,7 @@ const Engine = (function () {
 
   function endTurn(g) {
     const n = g.order.length;
+    g.pl = 0; g.ymv2 = false; // cartas jugadas en este turno («Ya me voy») y si ya se abrió la segunda jugada
     g.turns = (g.turns || 0) + 1; // turnos jugados (para el resumen final)
     for (let k = 0; k < n; k++) {
       g.turn = (g.turn + 1) % n;
@@ -968,7 +997,7 @@ const Engine = (function () {
   function okMed(g, u, c, pid, idx) {
     const sl = g.bodies[pid] && g.bodies[pid][idx];
     if (!sl) return false;
-    if (pid !== u && !cursed(g, u)) return false; // con Truco o trato puedes curar a otros
+    if (pid !== u && !cursed(g, u) && !mate(g, u, pid)) return false; // con Truco o trato puedes curar a otros; en 2 vs 2, a tu compañero
     if (sl.o.c === 'bionic') return false;
     const s = st(sl);
     if (c.failed) return s === 'infected' || s === 'vacc'; // como medicina cura cualquier virus (también los evolucionados) o inmuniza un órgano vacunado
@@ -1005,7 +1034,7 @@ const Engine = (function () {
   function okQuar(g, u, pid, idx) {
     const sl = g.bodies[pid] && g.bodies[pid][idx];
     if (!sl || st(sl) !== 'infected') return false;
-    return pid === u || cursed(g, u);
+    return pid === u || cursed(g, u) || mate(g, u, pid); // en 2 vs 2 también puedes poner en cuarentena un virus de tu compañero
   }
   const pseudo = (a) => ({ t: a.as, c: 'any', failed: 1 });
 
@@ -1013,7 +1042,7 @@ const Engine = (function () {
   function check(g, u, c, a, redir) {
     const body = g.bodies[u];
     const ex = redir ? (g.redirect.excluded || []) : [];
-    const notEx = p => ex.indexOf(p) < 0;
+    const act = actor(g, u, redir), notExP = p => ex.indexOf(p) < 0, notEx = p => notExP(p) && !mate(g, act, p); // 2 vs 2: nada hostil al compañero (curarlo sí se puede)
     if (c.t === 'o') {
       if (c.c === 'mutant') { // el mutante se juega sacrificando un órgano propio: lo reemplaza
         if (!body.length) return 'El órgano mutante reemplaza a uno de tus órganos: todavía no tienes ninguno.';
@@ -1023,12 +1052,12 @@ const Engine = (function () {
       return canReceive(body, c, -1) ? null : 'Ya tienes ese órgano en tu cuerpo.';
     }
     if (c.t === 'v') return (notEx(a.pid) && okVirus(g, u, c, a.pid, a.idx, redir)) ? null : 'Ese objetivo no es válido para esta carta.';
-    if (c.t === 'm') return (notEx(a.pid) && okMed(g, u, c, a.pid, a.idx)) ? null : 'Ese objetivo no es válido para esta carta.';
+    if (c.t === 'm') return (notExP(a.pid) && okMed(g, u, c, a.pid, a.idx)) ? null : 'Ese objetivo no es válido para esta carta.';
     switch (c.k) {
       case 'swap': return (notEx(a.pid) && okSwap(g, u, a.myIdx, a.pid, a.idx)) ? null : 'Ese intercambio no es válido.';
       case 'steal': return (notEx(a.pid) && okSteal(g, u, a.pid, a.idx)) ? null : 'Ese órgano no se puede robar.';
       case 'thief': return (notEx(a.pid) && okSteal(g, u, a.pid, a.idx, c.c)) ? null : 'Ese órgano no se puede robar.';
-      case 'alien': return okAlien(g, u, a.p1, a.i1, a.p2, a.i2) ? null : 'Elige órganos de dos jugadores distintos a ti.';
+      case 'alien': return (!mate(g, u, a.p1) && !mate(g, u, a.p2) && okAlien(g, u, a.p1, a.i1, a.p2, a.i2)) ? null : 'Elige órganos de dos jugadores distintos a ti.';
       case 'quarantine': return okQuar(g, u, a.pid, a.idx) ? null : 'Elige un órgano infectado.';
       case 'failed':
         if (a.as !== 'v' && a.as !== 'm') return 'Elige si actúa como virus o como medicina.';
@@ -1051,6 +1080,7 @@ const Engine = (function () {
     if (redir && g.redirect && g.redirect.kind === 'spread') return spreadRedirCands(g).some(x => x.pid === pid && x.idx === idx);
     const ex = (redir && g.redirect) ? g.redirect.excluded : [];
     if (ex.indexOf(pid) >= 0 && !(c.t === 'x' && c.k === 'alien')) return false;
+    if (mate(g, actor(g, u, redir), pid) && (c.t === 'v' || (c.t === 'x' && (['steal', 'thief', 'swap', 'alien'].indexOf(c.k) >= 0 || (c.k === 'failed' && mode === 'v'))))) return false; // 2 vs 2: nada hostil contra el compañero
     if (c.t === 'o') return c.c === 'mutant' && pid === u && !!g.bodies[u][idx];
     if (c.t === 'v') return okVirus(g, u, c, pid, idx, redir);
     if (c.t === 'm') return okMed(g, u, c, pid, idx);
@@ -1075,7 +1105,7 @@ const Engine = (function () {
   // ¿se puede tocar a este jugador como objetivo (Error médico, Segunda opinión, Truco o trato)?
   function playerOK(g, u, c, pid, redir) {
     if (c.t !== 'x' || ['error', 'second', 'trick'].indexOf(c.k) < 0) return false;
-    if (pid === u || !g.bodies[pid]) return false;
+    if (pid === u || !g.bodies[pid] || mate(g, u, pid)) return false;
     if (redir && g.redirect.excluded.indexOf(pid) >= 0) return false;
     return true;
   }
@@ -1091,7 +1121,7 @@ const Engine = (function () {
       if (!v) return;
       const opts = [];
       g.order.forEach(p => {
-        if (p === u) return;
+        if (p === u || mate(g, u, p)) return;
         g.bodies[p].forEach((o, i) => { if (spreadTarget(g, p, o, v)) opts.push({ p, i }); });
       });
       res.push({ si, v, opts });
@@ -1151,7 +1181,7 @@ const Engine = (function () {
     for (const m of moves) {
       if (!m || !Number.isInteger(m.si) || !Number.isInteger(m.i)) return false;
       const sl = g.bodies[u][m.si], v = sl && sl.m.find(x => x.t === 'v');
-      if (!v || m.p === u || g.order.indexOf(m.p) < 0) return false;
+      if (!v || m.p === u || mate(g, u, m.p) || g.order.indexOf(m.p) < 0) return false;
       const t = g.bodies[m.p][m.i];
       if (!t || !spreadTarget(g, m.p, t, v)) return false;
       if (usedS[m.si] || usedT[m.p + ':' + m.i]) return false;
@@ -1301,16 +1331,32 @@ const Engine = (function () {
     const w = [u].concat(g.order.filter(x => x !== u)).find(x => canWin(g, x));
     if (!w) return false;
     g.status = 'ended'; g.winner = w; g.extra = null; g.pending = null; g.redirect = null;
-    g.score = g.score || {}; g.score[w] = (g.score[w] || 0) + 1; // marcador de la noche
-    g.log.push(g.players[w].name + ' completa un cuerpo sano y gana');
+    g.score = g.score || {};
+    if (g.teams) { // 2 vs 2: gana el equipo entero cuando uno de los dos completa su cuerpo
+      g.winTeam = g.order.filter(x => g.teams[x] === g.teams[w]);
+      g.winTeam.forEach(x => { g.score[x] = (g.score[x] || 0) + 1; });
+      g.log.push(g.players[w].name + ' completa un cuerpo sano: gana el equipo de ' + g.winTeam.map(x => g.players[x].name).join(' y '));
+    } else {
+      g.score[w] = (g.score[w] || 0) + 1; // marcador de la noche
+      g.log.push(g.players[w].name + ' completa un cuerpo sano y gana');
+    }
     return true;
   }
   function finish(g, u) {
     g.extra = null;
     if (g.idle) delete g.idle[u];
     if (g.status !== 'ended') {
-      draw(g, u);
-      if (!checkWin(g, u)) endTurn(g);
+      if (g.opts && g.opts.yamevoy && (g.pl || 0) === 1 && !g.ymv2 && g.hands[u].length && !checkWin(g, u)) {
+        // «Ya me voy»: después de la primera carta jugada puedes jugar una segunda (o terminar tu turno)
+        g.ymv2 = true; g.extra = { u, n: 1, pass: true, nodisc: true, kind: 'yamevoy' };
+        g.log.push(g.players[u].name + ' puede jugar una segunda carta');
+        g.seq++; g.log = g.log.slice(-80);
+        return { g };
+      }
+      if (g.status !== 'ended') {
+        draw(g, u);
+        if (!checkWin(g, u)) endTurn(g);
+      }
     }
     g.seq++; g.log = g.log.slice(-80);
     return { g };
@@ -1345,6 +1391,7 @@ const Engine = (function () {
     const g = clone(g0);
     const c = takeCard(g, u, cardId);
     setLast(g, u, c, a);
+    g.pl = (g.pl || 0) + 1;
     const start = execute(g, u, c, a, prot);
     return proceed(g, u, start);
   }
@@ -1359,7 +1406,7 @@ const Engine = (function () {
     if (!c) return { err: 'Esa carta no está en tu mano.' };
     if (g0.extra && g0.extra.u === u) {
       if (g0.extra.only && g0.extra.only.indexOf(cardId) < 0) return { err: 'Solo puedes jugar la carta recuperada.' };
-      if (c.t === 'x' && ['overtime', 'second', 'apparition'].indexOf(c.k) >= 0) return { err: 'No puedes jugar esa carta ahora.' };
+      if (c.t === 'x' && (g0.extra.kind === 'yamevoy' ? ['overtime'] : ['overtime', 'second', 'apparition']).indexOf(c.k) >= 0) return { err: 'No puedes jugar esa carta ahora.' };
     }
     const e = check(g0, u, c, a, false);
     if (e) return { err: e };
@@ -1422,6 +1469,7 @@ const Engine = (function () {
   function cancelCard(g, u, cardId) {
     const c = takeCard(g, u, cardId);
     if (c) g.discard.push(c);
+    g.pl = (g.pl || 0) + 1;
     g.log.push(g.redirect && g.redirect.by ? 'El virus de ' + g.players[u].name + ' se descarta' : g.players[u].name + ' no encuentra otro objetivo: la carta se descarta');
     g.redirect = null;
     return proceed(g, u, null);
@@ -1471,7 +1519,7 @@ const Engine = (function () {
     const srcs = {}; S.moves.forEach((x, k) => { if (k !== R.mv) srcs[x.si] = 1; }); // órganos de quien contagió de los que sale otro virus
     if (R.by !== S.u) out.push({ pid: S.u, idx: m.si }); // volver a su órgano de origen (si rebota quien contagió, ya no)
     g.order.forEach(pid => {
-      if (R.excluded.indexOf(pid) >= 0) return;
+      if (R.excluded.indexOf(pid) >= 0 || mate(g, R.by, pid)) return; // quien rebota no puede mandarle el virus a su compañero
       g.bodies[pid].forEach((o, i) => {
         if (pid === S.u && (i === m.si || srcs[i])) return;
         if (taken[pid + ':' + i]) return;
@@ -1593,7 +1641,7 @@ const Engine = (function () {
 
   return {
     COLORS, ONAME, TNAME, COUNTS, shuffle, buildDeck, newGame, st, hit, mm, canReceive, healthy, goal, cursed, canWin, hasSuit,
-    targetOK, playerOK, check, spreadRedirCands, victims, spreadPlan, spreadOptions, spreadMax, spreadChoices, okSpread, convBlocked, apply, respond, expirePending, redirect, noTarget, redirectCandidates,
+    mate, targetOK, playerOK, check, spreadRedirCands, victims, spreadPlan, spreadOptions, spreadMax, spreadChoices, okSpread, convBlocked, apply, respond, expirePending, redirect, noTarget, redirectCandidates,
     discardCards, pass, timeoutTurn
   };
 })();
@@ -2498,12 +2546,13 @@ const Bot = (function () {
   // Qué tan buena es la posición para u: mi cuerpo menos el de los rivales (más peso al que va ganando).
   function V(g, u, cfg, r) {
     cfg = cfg || CFG.normal; r = r || 0;
-    if (g.status === 'ended') return g.winner === u ? 1e5 : -1e5;
+    if (g.status === 'ended') return (g.winTeam ? g.winTeam.indexOf(u) >= 0 : g.winner === u) ? 1e5 : -1e5;
     const me = S(g, u, r);
     let o = 0;
     g.order.forEach(p => {
       if (p === u) return;
       const x = S(g, p, r);
+      if (E.mate(g, u, p)) { o -= 0.3 * x.s; return; } // 2 vs 2: lo que avance mi compañero también es mío
       o += (0.35 + 0.15 * x.h + (x.h >= E.goal(g) - 1 ? cfg.threat : 0)) * x.s;
     });
     let v = me.s - o / Math.max(1, (g.order.length - 1) / 2);
@@ -2554,7 +2603,7 @@ const Bot = (function () {
   // Peligro total tras mi jugada. Pesa más el que tira primero después de mí: si lo tapo, los siguientes todavía tienen a alguien
   // antes que ellos que puede taparlos; así el bot no se desgasta intentando frenar a todos a la vez.
   const DW = [1, 0.45, 0.25, 0.15, 0.1];
-  const dangerSum = (g, u, pool, floor) => { const n = g.order.length, iu = g.order.indexOf(u); let s = 0; for (let k = 1; k < n; k++) s += DW[Math.min(k - 1, DW.length - 1)] * winProb(g, g.order[(iu + k) % n], pool, floor); return s; };
+  const dangerSum = (g, u, pool, floor) => { const n = g.order.length, iu = g.order.indexOf(u); let s = 0; for (let k = 1; k < n; k++) { const q = g.order[(iu + k) % n]; if (!E.mate(g, u, q)) s += DW[Math.min(k - 1, DW.length - 1)] * winProb(g, q, pool, floor); } return s; };
 
   // Cartas que el bot no ha visto (para imaginar qué pueden tener los demás)
   function unseenPool(g, u) {
@@ -2593,7 +2642,7 @@ const Bot = (function () {
           });
           if (bestV) after = bestV.g;
         }
-        tot += (cfg.danger && after.status === 'ended') ? (after.winner === u ? 700 : -700) : V(after, u, cfg, rk); n++;
+        tot += (cfg.danger && after.status === 'ended') ? ((after.winTeam ? after.winTeam.indexOf(u) >= 0 : after.winner === u) ? 700 : -700) : V(after, u, cfg, rk); n++;
       });
       cd.look = n ? tot / n : -1e9;
     });
@@ -2621,7 +2670,7 @@ const Bot = (function () {
     const out = [];
     g.hands[u].forEach(c => {
       if (ex && ex.only && ex.only.indexOf(c.i) < 0) return;
-      if (ex && c.t === 'x' && ['overtime', 'second', 'apparition'].indexOf(c.k) >= 0) return;
+      if (ex && c.t === 'x' && (ex.kind === 'yamevoy' ? ['overtime'] : ['overtime', 'second', 'apparition']).indexOf(c.k) >= 0) return;
       if (c.t === 'x' && c.k === 'suit') return;
       candidates(g, u, c).forEach(a => { if (!E.check(g, u, c, a, false)) out.push({ c, a }); });
     });
@@ -2640,7 +2689,7 @@ const Bot = (function () {
     let top = null;
     const goal = E.goal(g), nPl = g.order.length, iu = g.order.indexOf(u);
     let p1 = null; // Experto: el jugador a un órgano de ganar que tira primero después de mí (a los demás los frenará quien tire antes que ellos)
-    if (cfg.block) for (let k = 1; k < nPl; k++) { const p = g.order[(iu + k) % nPl]; if (S(g, p).h >= goal - 1) { p1 = p; break; } }
+    if (cfg.block) for (let k = 1; k < nPl; k++) { const p = g.order[(iu + k) % nPl]; if (!E.mate(g, u, p) && S(g, p).h >= goal - 1) { p1 = p; break; } }
     const moves = legalMoves(g, u), cands = []; let winMove = null;
     if (cfg.rnd && Math.random() < cfg.rnd) { // nivel fácil: a veces juega sin pensar
       if (moves.length && Math.random() < 0.6) { const m = moves[Math.floor(Math.random() * moves.length)]; return { type: 'play', cardId: m.c.i, a: m.a }; }
@@ -2649,12 +2698,12 @@ const Bot = (function () {
     moves.forEach(m => {
       const r = E.apply(g, u, m.c.i, m.a, { noSuit: true });
       if (r.err) return;
-      if (cfg.block && r.g.status === 'ended' && r.g.winner === u && !winMove) winMove = m; // si puede ganar, gana
+      if (cfg.block && r.g.status === 'ended' && (r.g.winTeam ? r.g.winTeam.indexOf(u) >= 0 : r.g.winner === u) && !winMove) winMove = m; // si puede ganar, gana
       let d = V(r.g, u, cfg, rk) - base + Math.random() * cfg.noise;
       if (cfg.danger && r.g.status === 'playing') d -= cfg.danger * (dangerSum(r.g, u, dpool, cfg.floor) - dBase); // dejar a un rival con buena probabilidad de ganar cuesta mucho
       if (cfg.hand) d += cfg.hand * (handValue(r.g, u) - handBase);
       const k = m.c.k;
-      if (k === 'glove') d += 3 * (g.order.length - 1) + 8 * g.order.filter(p => p !== u && S(g, p).h >= E.goal(g) - 1).length;
+      if (k === 'glove') d += 3 * (g.order.length - 1) + 8 * g.order.filter(p => p !== u && !E.mate(g, u, p) && S(g, p).h >= E.goal(g) - 1).length;
       if (k === 'overtime') d += hand.length >= 3 ? 6 : 1;
       if (k === 'second') d += 2;
       if (k === 'apparition') d += 3;
@@ -2765,6 +2814,11 @@ if (typeof module !== 'undefined') module.exports = Bot;
   const iDefend = () => !!(g && g.status === 'playing' && g.pending && g.pending.holders.indexOf(me) >= 0 && g.pending.decided[me] === undefined);
   const myHand = () => (g && g.hands && g.hands[me]) || [];
   const myExtra = () => (g && g.extra && g.extra.u === me) ? g.extra : null;
+  // 2 vs 2: los equipos (0 azul, 1 naranja) los escoge cada quien en la sala; en partida salen de g.teams
+  const TEAMCOL = ['🔵', '🟠'], TEAMNAME = ['azul', 'naranja'];
+  const iWon = () => !!g && (g.winTeam ? g.winTeam.indexOf(me) >= 0 : g.winner === me);
+  const isWinner = u => !!g && (g.winTeam ? g.winTeam.indexOf(u) >= 0 : g.winner === u);
+  const teamBadge = pid => (g && g.teams && g.teams[pid] !== undefined) ? ' <small class="tmb t' + g.teams[pid] + '" title="Equipo ' + TEAMNAME[g.teams[pid]] + '">' + TEAMCOL[g.teams[pid]] + '</small>' : '';
   const cardName = c => c.t === 'x' ? (c.k === 'thief' ? 'Ladrón de ' + E.ONAME[c.c].toLowerCase() : E.TNAME[c.k]) :
     (c.c === 'wild' ? 'Multicolor' : E.ONAME[c.c]) + (c.t === 'o' ? '' : c.t === 'v' ? (c.ev ? ' (virus evolucionado)' : ' (virus)') : (c.ex ? ' (experimental)' : ' (medicina)'));
   const shortCardName = c => c.t === 'x' ? (c.k === 'thief' ? 'Ladrón: ' + E.ONAME[c.c] : E.TNAME[c.k]) :
@@ -3061,12 +3115,24 @@ if (typeof module !== 'undefined') module.exports = Bot;
   function toggleOpt(k) {
     if (!g || g.host !== me || g.status !== 'lobby') return;
     const o = {}; o[k] = !(g.opts && g.opts[k]);
-    ref.update({ opts: o }).catch(() => { ui.err = 'No se pudo guardar la opción.'; render(); });
+    const upd = { opts: o };
+    if (k === 'teams' && o[k]) { const pl = {}; Object.keys(g.players).forEach((u, i) => { pl[u] = { team: i % 2 }; }); upd.players = pl; } // al activar 2 vs 2: equipos alternados según el orden de llegada
+    ref.update(upd).catch(() => { ui.err = 'No se pudo guardar la opción.'; render(); });
+  }
+  function switchTeam(u) {
+    if (!g || g.status !== 'lobby' || !g.players[u] || !(g.host === me || u === me)) return;
+    const p = {}; p[u] = { team: 1 - teamOf(u) };
+    updatePlayers(p).then(render);
   }
   function startGame() {
     if (busy || !g || g.host !== me || Object.keys(g.players).length < 2) return;
+    const g2 = JSON.parse(JSON.stringify(g));
+    if (g2.opts && g2.opts.teams) { // 2 vs 2: hay que ser 4, dos en cada equipo
+      if (!teamsReady()) { ui.err = 'Para jugar 2 vs 2 necesitan ser 4 jugadores, 2 en cada equipo.'; return render(); }
+      Object.keys(g2.players).forEach(u => { g2.players[u].team = teamOf(u); });
+    }
     busy = true;
-    ref.set(E.newGame(g)).catch(() => { ui.err = 'No se pudo empezar la partida.'; }).then(() => { busy = false; render(); });
+    ref.set(E.newGame(g2)).catch(() => { ui.err = 'No se pudo empezar la partida.'; }).then(() => { busy = false; render(); });
   }
   function again() {
     if (busy || !g || g.host !== me) return;
@@ -3391,12 +3457,14 @@ if (typeof module !== 'undefined') module.exports = Bot;
     const curse = E.cursed(g, pid) ? '<span class="curse" role="img" aria-label="Truco o trato: no puede ganar" title="Truco o trato: no puede ganar">' + (g.curse.card ? Art.svg(g.curse.card, { marks: false }) : '🎃') + '</span>' : '';
     const organs = body.length ? body.map((sl, i) => organTile(sl, pid, i, mine ? 'lg' : 'sm')).join('') : '<span class="empty">Sin órganos</span>';
     return '<div data-seat="' + esc(pid) + '" class="seat ' + (pos === 'left' || pos === 'right' ? 'side ' : '') + (idle ? 'idle ' : '') + (turn ? 'turn ' : '') + (errT ? 'target' : '') + '"' + (errT ? ' data-act="player" data-p="' + esc(pid) + '"' : '') + '>' +
-      '<div class="plate"><span class="av" style="--av:' + col + '">' + (pl.av || isPhoto(pl.ph) ? avOf(pl) : esc(shortName(pid).charAt(0))) + '</span><span class="who"><span class="nm">' + (mine ? 'Tú' : esc(shortName(pid))) + (pl.bot ? ' <small>🤖</small>' : '') + (idle ? ' <small title="Lleva varios turnos sin jugar">💤</small>' : '') + '</span><span class="sub">' + cnt + pips + '</span></span>' + curse + '</div>' +
+      '<div class="plate"><span class="av" style="--av:' + col + '">' + (pl.av || isPhoto(pl.ph) ? avOf(pl) : esc(shortName(pid).charAt(0))) + '</span><span class="who"><span class="nm">' + (mine ? 'Tú' : esc(shortName(pid))) + teamBadge(pid) + (pl.bot ? ' <small>🤖</small>' : '') + (idle ? ' <small title="Lleva varios turnos sin jugar">💤</small>' : '') + '</span><span class="sub">' + cnt + pips + '</span></span>' + curse + '</div>' +
       '<div class="obody">' + organs + '</div></div>';
   }
 
   function rulesHTML() {
     return '<details class="rules"><summary>Cómo se juega</summary>' +
+      '<p><b>Ya me voy:</b> mismas reglas, pero en tu turno puedes jugar <b>dos cartas</b> en lugar de una (o terminar tu turno después de la primera). Si en vez de jugar descartas, tu turno termina. Al final robas hasta tener 3. En este modo no hay cartas de Horas extra.</p>' +
+      '<p><b>Equipos 2 vs 2:</b> con 4 jugadores. Los turnos se alternan entre un equipo y el otro, y los compañeros no se atacan: no puedes jugarle a tu compañero un virus, un ladrón, un trasplante, Contagio, Error médico, Segunda opinión ni Truco o trato. Lo que sí puedes hacer es ayudarlo: una medicina o una Cuarentena se puede poner en un órgano de tu compañero. Gana el equipo cuando cualquiera de los dos completa su cuerpo sano. Lo que afecta a todos (Guante de látex, Cambio de cuerpos) sí cuenta para todos.</p>' +
       '<p>Gana quien primero tenga 4 órganos sanos (5 en el modo duelo con Evolution). El biónico y el mutante son órganos extra. El mutante se juega sacrificando uno de tus órganos: reemplaza al que elijas, y sin órganos no se puede jugar.</p>' +
       '<p>Órgano multicolor: sirve como cualquier color hasta que recibe un virus o una medicina de un color; entonces se convierte en ese órgano (y su dueño ya no puede poner otro de ese color). Por eso no se le puede jugar un virus o medicina de un color que su dueño ya tiene, ni robarlo o cambiarlo a quien ya tiene ese color. Si se destruye, vuelve a ser multicolor.</p>' +
       '<p>En tu turno juegas una carta o descartas de 1 a 3, y luego robas hasta tener 3.</p>' +
@@ -3439,8 +3507,20 @@ if (typeof module !== 'undefined') module.exports = Bot;
     { k: 'evo', t: 'Virus! 2 Evolution', d: 'Virus evolucionados, medicinas experimentales, órgano biónico, horas extra, segunda opinión, traje de protección y cuarentena.' },
     { k: 'hall', t: 'Virus! Halloween', d: 'Órgano mutante, ladrones de colores, trasplante alienígena, aparición, experimento fallido, truco o trato y cambio de cuerpos.' },
     { k: 'epidemic', t: 'Modo epidemia', d: 'Los virus curados con una medicina experimental salen del juego (para partidas de 6).', needs: 'evo' },
-    { k: 'duel', t: 'Modo duelo', d: 'Con 2 jugadores, hacen falta 5 órganos sanos (necesita Virus! 2 Evolution; sin él, 4).', needs2: true }
+    { k: 'duel', t: 'Modo duelo', d: 'Con 2 jugadores, hacen falta 5 órganos sanos (necesita Virus! 2 Evolution; sin él, 4).', needs2: true },
+    { k: 'yamevoy', t: 'Ya me voy', d: 'Mismas reglas, pero en tu turno puedes jugar dos cartas en lugar de una. No hay cartas de Horas extra.' },
+    { k: 'teams', t: 'Equipos 2 vs 2', d: 'Solo con 4 jugadores: los compañeros no se atacan, pueden curarse entre sí con medicinas y gana el equipo cuando cualquiera de los dos completa su cuerpo.', needs4: true }
   ];
+  const teamOf = u => { const t = g.players[u] && g.players[u].team; return (t === 0 || t === 1) ? t : Object.keys(g.players).indexOf(u) % 2; };
+  const teamsReady = () => { const ids = Object.keys(g.players); return ids.length === 4 && ids.filter(u => teamOf(u) === 0).length === 2; };
+  function teamBox() {
+    const o = g.opts || {}, ids = Object.keys(g.players);
+    if (!o.teams) return '';
+    if (ids.length !== 4) return '<div class="card-box"><h3>Equipos 2 vs 2</h3><p class="note" style="margin:0">Para jugar por equipos necesitan ser exactamente 4 jugadores (ahora son ' + ids.length + ').</p></div>';
+    const host = g.host === me;
+    const col = t => '<div class="tmcol t' + t + '"><h4>' + TEAMCOL[t] + ' Equipo ' + TEAMNAME[t] + '</h4><ul>' + ids.filter(u => teamOf(u) === t).map(u => '<li><span class="av sm" style="--av:' + AVBG[ids.indexOf(u) % AVBG.length] + '">' + avOf(g.players[u].av || isPhoto(g.players[u].ph) ? g.players[u] : { av: '🙂' }) + '</span><span class="tmn">' + esc(g.players[u].name) + (u === me ? ' (tú)' : '') + '</span>' + ((host || u === me) ? '<button class="btn alt sm" data-act="teamsw" data-p="' + esc(u) + '" aria-label="Cambiar de equipo a ' + esc(g.players[u].name) + '">⇄</button>' : '') + '</li>').join('') + '</ul></div>';
+    return '<div class="card-box"><h3>Equipos 2 vs 2</h3><div class="teams">' + col(0) + col(1) + '</div><p class="note" style="margin:8px 0 0">' + (teamsReady() ? 'Los turnos se alternan entre un equipo y otro. Gana el equipo cuando cualquiera de los dos completa su cuerpo sano.' : 'Cada equipo necesita 2 jugadores: toca ⇄ para cambiar a alguien de equipo.') + '</p></div>';
+  }
   function lobbyHTML() {
     const ids = Object.keys(g.players);
     const host = g.host === me;
@@ -3458,7 +3538,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
       : '<div class="avgrid">' + AVATARS.map(avCell).join('') + '</div>';
     const opts = OPTS.map(x => {
       const on = !!o[x.k];
-      const off = (x.needs && !o[x.needs]) || (x.needs2 && ids.length !== 2);
+      const off = (x.needs && !o[x.needs]) || (x.needs2 && ids.length !== 2) || (x.needs4 && ids.length !== 4);
       return '<button class="opt' + (on && !off ? ' on' : '') + '" data-act="opt" data-k="' + x.k + '"' + (!host || off ? ' disabled' : '') + ' aria-pressed="' + (on && !off) + '"><span class="ot-t">' + x.t + '</span><span class="ot-d">' + x.d + '</span></button>';
     }).join('');
     const manual = ui.copied === 'manual' ? '<input class="copybox" id="cb" type="text" readonly value="' + esc(inviteLink()) + '" onfocus="this.select()">' : '';
@@ -3470,6 +3550,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
       '<div class="card-box"><h3>Jugadores (' + ids.length + ')</h3><ul class="plist">' + list + '</ul>' +
       (host ? '<div class="bar"><button class="btn alt" data-act="addbot"' + (ids.length >= 6 ? ' disabled' : '') + '>Agregar bot</button></div>' +
         '<p class="note" style="margin:8px 0 0">' + (P2P ? 'Tu navegador es el anfitrión: no cierres esta página mientras juegan (si la cierras, al reabrirla la partida continúa).' : 'Los bots juegan desde tu navegador: deja esta página abierta mientras juegan.') + '</p>' : '') + '</div>' +
+      teamBox() +
       scoreBox() +
       turnBox() + botsBox() +
       '<div class="card-box">' + statsBtn() + histBtn() + '</div>' +
@@ -3478,7 +3559,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
       '<div class="card-box"><h3>Tu avatar</h3>' + photoRow() + avBlock + '</div>' +
       '<div class="card-box"><h3>Cartas y modos</h3><p class="note" style="margin:0 0 8px">' + (host ? 'Elige qué se juega.' : 'Las elige el anfitrión.') + '</p><div class="opts">' + opts + '</div></div>' +
       '<div class="card-box">' + (ui.err ? '<p class="err" style="margin-top:0">' + esc(ui.err) + '</p>' : '') + '<div class="bar">' +
-      (host ? '<button class="btn" data-act="start"' + (ids.length < 2 ? ' disabled' : '') + '>' + (ids.length < 2 ? 'Faltan jugadores' : 'Empezar partida') + '</button>'
+      (host ? '<button class="btn" data-act="start"' + (ids.length < 2 || (o.teams && !teamsReady()) ? ' disabled' : '') + '>' + (ids.length < 2 ? 'Faltan jugadores' : (o.teams && !teamsReady()) ? 'Arma los 2 equipos de 2' : 'Empezar partida') + '</button>'
         : '<button class="btn alt" disabled>Esperando al anfitrión</button>') +
       '<button class="btn alt" data-act="leave">Salir</button></div></div>' + verBox() + rulesHTML();
   }
@@ -3500,7 +3581,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
     if (!myTurn()) return isBot(g.order[g.turn]) ? '<b>' + esc(shortName(g.order[g.turn])) + '</b> está pensando…' : 'Turno de <b>' + esc(shortName(g.order[g.turn])) + '</b>. Espera tu turno.';
     if (ui.err) return '<span class="err" style="margin:0">' + esc(ui.err) + '</span>';
     const ex = myExtra();
-    const pre = ex ? ({ overtime: '<b>Horas extra:</b> ', second: '<b>Segunda opinión:</b> ', apparition: '<b>Aparición:</b> ' }[ex.kind] || '') : '';
+    const pre = ex ? ({ overtime: '<b>Horas extra:</b> ', second: '<b>Segunda opinión:</b> ', apparition: '<b>Aparición:</b> ', yamevoy: '<b>Ya me voy:</b> ' }[ex.kind] || '') : '';
     if (ui.disc) return pre + 'Toca ' + (ex ? 'la carta que no puedas jugar' : 'de 1 a 3 cartas para descartarlas') + '.';
     const c = ui.sel;
     if (!c) {
@@ -3508,12 +3589,13 @@ if (typeof module !== 'undefined') module.exports = Bot;
         if (ex.kind === 'overtime') return pre + 'juega tus otras cartas (te quedan ' + ex.n + ').';
         if (ex.kind === 'second') return pre + 'juega una de las cartas recibidas o termina tu turno.';
         if (ex.kind === 'apparition') return pre + 'juega la carta recuperada o termina tu turno.';
+        if (ex.kind === 'yamevoy') return pre + 'juega una segunda carta o termina tu turno.';
       }
       if (!myHand().length) return '<b>Tu turno.</b> No tienes cartas: pasa el turno.';
       return '<b>Tu turno.</b> Elige una carta para jugar o descarta de 1 a 3.';
     }
     if (needsNoTarget(c) && !playableNow(c)) {
-      if (myExtra() && c.t === 'x' && ['overtime', 'second', 'apparition'].indexOf(c.k) >= 0) return 'Esa carta no se puede jugar dentro de un turno extra. Cancela y descártala.';
+      if (myExtra() && c.t === 'x' && (myExtra().kind === 'yamevoy' ? ['overtime'] : ['overtime', 'second', 'apparition']).indexOf(c.k) >= 0) return 'Esa carta no se puede jugar dentro de un turno extra. Cancela y descártala.';
       if (c.t === 'o' && c.c === 'mutant') return 'El órgano mutante reemplaza a uno de tus órganos y todavía no tienes ninguno, así que no lo puedes jugar. Descártalo o elige otra carta.';
       if (c.t === 'o') return 'Ya tienes ese órgano. Elige otra carta.';
       if (c.k === 'apparition') return 'No hay cartas en el descarte.';
@@ -3524,7 +3606,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
       return E.canReceive(g.bodies[me], c, -1) ? 'Pon este órgano en tu cuerpo.' : 'Ya tienes ese órgano. Elige otra carta.';
     }
     if (c.t === 'v') return 'Toca el órgano rival que quieres infectar' + (c.ev ? ' (virus evolucionado)' : '') + '.';
-    if (c.t === 'm') return E.cursed(g, me) ? 'Toca un órgano para curarlo o vacunarlo (con Truco o trato puedes ayudar a otros).' : 'Toca uno de tus órganos para curarlo, vacunarlo o inmunizarlo.';
+    if (c.t === 'm') return E.cursed(g, me) ? 'Toca un órgano para curarlo o vacunarlo (con Truco o trato puedes ayudar a otros).' : (g.teams ? 'Toca uno de tus órganos o de tu compañero para curarlo, vacunarlo o inmunizarlo.' : 'Toca uno de tus órganos para curarlo, vacunarlo o inmunizarlo.');
     switch (c.k) {
       case 'swap': return !ui.first ? 'Primero toca uno de tus órganos (aunque esté infectado, vacunado o inmunizado).' : 'Ahora toca el órgano rival que quieres recibir (en cualquier estado).';
       case 'alien': return !ui.first ? 'Toca un órgano de otro jugador (en cualquier estado). No sirve con los tuyos.' : 'Ahora toca un órgano de un jugador distinto (tampoco tuyo): se intercambian entre ellos.';
@@ -3618,9 +3700,14 @@ if (typeof module !== 'undefined') module.exports = Bot;
   // ---------- reacciones rápidas ----------
   const REACTS = ['😂', '👏', '😱', '😈', '🤝', '🔥', '😢', '😡', '🤔', '😎', '🎉', '🙏'];
   const PHRASES = ['¡Buena jugada!', '¡Ayúdame!', '¡Qué mala suerte!', '¡Cuidado!', '¡Apúrate!', '¡Gracias!'];
-  const okReact = e => REACTS.indexOf(e) >= 0 || PHRASES.indexOf(e) >= 0;
+  // Frases especiales: solo aparecen para quien juega con uno de los avatares de «Nosotros» (Cosmar, Turo, Davis y Bati)
+  const NOS_AV = ['n:cosmar', 'n:turo', 'n:davis', 'n:bati'];
+  const NOS_PHRASES = ['Llama', 'HDTPM', 'Te voy a coger', 'Me los voy a chingar', 'Chinga tu madre!', 'Ya me tengo que ir!', 'Última y ya', 'Le pegan!', 'No estás viendo?', 'Estás bien wey!', 'Haz algo!'];
+  const isNos = () => !!(g && g.players && g.players[me] && NOS_AV.indexOf(g.players[me].av) >= 0);
+  const isPhrase = e => PHRASES.indexOf(e) >= 0 || NOS_PHRASES.indexOf(e) >= 0;
+  const okReact = e => REACTS.indexOf(e) >= 0 || isPhrase(e);
   const reactBtn = () => '<button class="menubtn rbtn' + (ui.react ? ' on' : '') + '" data-act="react" aria-label="Reacciones" aria-expanded="' + !!ui.react + '">😀</button>';
-  const reactTray = () => ui.react ? '<div class="reacttray">' + REACTS.map(e => '<button data-act="sendreact" data-e="' + e + '" aria-label="Enviar ' + e + '">' + e + '</button>').join('') + '<div class="rphr">' + PHRASES.map(e => '<button data-act="sendreact" data-e="' + esc(e) + '">' + esc(e) + '</button>').join('') + '</div></div>' : '';
+  const reactTray = () => ui.react ? '<div class="reacttray">' + REACTS.map(e => '<button data-act="sendreact" data-e="' + e + '" aria-label="Enviar ' + e + '">' + e + '</button>').join('') + '<div class="rphr">' + PHRASES.map(e => '<button data-act="sendreact" data-e="' + esc(e) + '">' + esc(e) + '</button>')  .join('') + '</div>' + (isNos() ? '<div class="rphr nos"><small class="rlbl">Frases de Nosotros</small>' + NOS_PHRASES.map(e => '<button data-act="sendreact" data-e="' + esc(e) + '">' + esc(e) + '</button>').join('') + '</div>' : '') + '</div>' : '';
   let reactSeen = null, reactLast = 0;
   async function sendReact(e) {
     if (!ref || !g || !okReact(e)) return;
@@ -3638,7 +3725,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
     if (typeof document.body.animate !== 'function' || document.hidden) return;
     const seat = document.querySelector('[data-seat="' + R.u + '"]'); if (!seat) return;
     const r = seat.getBoundingClientRect(), el = document.createElement('div');
-    const txt = PHRASES.indexOf(R.e) >= 0;
+    const txt = isPhrase(R.e);
     el.className = 'rfx' + (txt ? ' txt' : ''); el.setAttribute('aria-hidden', 'true');
     el.innerHTML = '<span>' + esc(R.e) + '</span><small>' + esc(shortName(R.u)) + '</small>';
     document.body.appendChild(el);
@@ -3704,7 +3791,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
     if (!g) { sfxEndInit = false; sfxEndKey = null; return; }
     const key = g.status === 'ended' ? g.code + ':' + (g.winner || '') + ':' + JSON.stringify(g.score || {}) : null;
     if (!sfxEndInit) { sfxEndInit = true; sfxEndKey = key; return; }
-    if (key && key !== sfxEndKey) { const won = g.winner === me; setTimeout(() => sfxPlay(won ? 'win' : 'lose'), 700); }
+    if (key && key !== sfxEndKey) { const won = iWon(); setTimeout(() => sfxPlay(won ? 'win' : 'lose'), 700); }
     sfxEndKey = key;
   }
   async function askNotif() { try { await Notification.requestPermission(); } catch (e) { } render(); }
@@ -3778,7 +3865,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
     store.set(HK, JSON.stringify(idx)); store.set('virus.hist.' + H.rec.id, JSON.stringify(H.lines.slice(-HLINES)));
   }
   const hSchedule = () => { if (!H.timer) H.timer = setTimeout(hFlush, 1200); };
-  const hOpts = o => { o = o || {}; const t = []; if (o.evo) t.push('Evolution'); if (o.hall) t.push('Halloween'); if (o.duel) t.push('Duelo'); if (o.epidemic) t.push('Epidemia'); return (t.length ? t.join(' + ') : 'Virus! clásico') + (o.turn !== undefined ? ' · turno ' + (o.turn ? o.turn + ' s' : 'sin límite') : ''); };
+  const hOpts = o => { o = o || {}; const t = []; if (o.evo) t.push('Evolution'); if (o.hall) t.push('Halloween'); if (o.duel) t.push('Duelo'); if (o.epidemic) t.push('Epidemia'); if (o.yamevoy) t.push('Ya me voy'); if (o.teams) t.push('2 vs 2'); return (t.length ? t.join(' + ') : 'Virus! clásico') + (o.turn !== undefined ? ' · turno ' + (o.turn ? o.turn + ' s' : 'sin límite') : ''); };
   function hFinal() {
     return g.order.map(u => g.players[u].name + ': ' + (g.bodies[u].map(s => { const sx = E.st(s), v = s.m.find(x => x.t === 'v'); return E.ONAME[s.o.c] + (sx === 'infected' ? ' (infectado' + (v && v.ev ? ' con virus evolucionado' : '') + ')' : sx === 'vacc' ? ' (vacunado)' : sx === 'immune' ? ' (inmune)' : ''); }).join(', ') || 'sin órganos'));
   }
@@ -3800,7 +3887,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
     if (H.prev.length && !m && cur.length) H.lines.push('… (se perdieron algunas jugadas por la conexión) …');
     for (let j = m; j < cur.length; j++) H.lines.push(cur[j]);
     H.prev = cur.slice(); H.seq = seq; H.st = g.status; H.rec.n = H.lines.length;
-    if (g.status === 'ended' && !H.rec.ended) { H.rec.ended = true; H.rec.t1 = Date.now(); H.rec.win = g.players[g.winner] ? g.players[g.winner].name : ''; H.rec.fin = hFinal(); hFlush(); }
+    if (g.status === 'ended' && !H.rec.ended) { H.rec.ended = true; H.rec.t1 = Date.now(); H.rec.win = g.winTeam ? g.winTeam.map(u => g.players[u] ? g.players[u].name : '').join(' y ') : (g.players[g.winner] ? g.players[g.winner].name : ''); H.rec.fin = hFinal(); hFlush(); }
     else hSchedule();
   }
   window.addEventListener('pagehide', () => { try { hFlush(); } catch (e) { } });
@@ -3861,7 +3948,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
     if (!stEndInit) { stEndInit = true; stEndKey = key; return; }
     if (key && key !== stEndKey && g.players && g.players[me] && !(g.idle && g.idle[me] >= 2) && store.get('virus.statslast') !== key) {
       store.set('virus.statslast', key);
-      const s = recordResult(g.winner === me), p = {}; p[me] = { st: stSummary(s) }; updatePlayers(p);
+      const s = recordResult(iWon()), p = {}; p[me] = { st: stSummary(s) }; updatePlayers(p);
     }
     stEndKey = key;
   }
@@ -3898,7 +3985,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
   }
   function resultText() {
     const rows = scoreRows(), w = g.players[g.winner];
-    return '🏆 ' + (w ? w.name : '¡Alguien!') + ' ganó la partida de Virus!' + (g.turns ? ' (' + g.turns + ' turnos)' : '') + '\n' +
+    return '🏆 ' + (g.winTeam ? 'El equipo de ' + g.winTeam.map(u => g.players[u].name).join(' y ') : (w ? w.name : '¡Alguien!')) + ' ganó la partida de Virus!' + (g.turns ? ' (' + g.turns + ' turnos)' : '') + '\n' +
       (rows.some(r => r.n > 0) ? 'Marcador de la noche: ' + rows.filter(r => r.n > 0).map(r => g.players[r.u].name + ' ' + r.n).join(' · ') + '\n' : '') +
       'Juega con nosotros: ' + location.href.split('#')[0].split('?')[0];
   }
@@ -3924,17 +4011,17 @@ if (typeof module !== 'undefined') module.exports = Bot;
     };
     const wp = g.players[g.winner] || { name: '¡Alguien!' };
     circle(await avatarImg(wp, 520), wp, W / 2, 420, 150, 14);
-    c.fillStyle = '#fff'; c.font = '800 80px ' + F; c.fillText(wp.name, W / 2, 650);
+    const wnm = g.winTeam ? g.winTeam.map(u => g.players[u].name).join(' y ') : wp.name; c.fillStyle = '#fff'; c.font = (wnm.length > 14 ? '800 56px ' : '800 80px ') + F; c.fillText(wnm, W / 2, 650);
     c.font = '700 44px ' + EM + F; c.fillStyle = '#F2C230'; c.fillText('🏆 ganó la partida' + (g.turns ? ' · ' + g.turns + ' turnos' : ''), W / 2, 715);
     let y = 775; c.font = '600 34px ' + EM + F; c.fillStyle = 'rgba(255,255,255,.9)';
     highlights().forEach(t => { c.fillText(t, W / 2, y); y += 48; });
     y = Math.max(y + 20, 860);
     const rows = scoreRows(); const ids = Object.keys(g.players), st = g.stats || {};
-    rows.sort((a, b) => (b.u === g.winner) - (a.u === g.winner) || b.n - a.n);
+    rows.sort((a, b) => isWinner(b.u) - isWinner(a.u) || b.n - a.n);
     const rh = Math.min(96, Math.floor((H - 130 - y) / Math.max(1, rows.length)));
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i], pl = g.players[r.u], cy = y + i * rh + rh / 2;
-      c.fillStyle = r.u === g.winner ? 'rgba(242,194,48,.22)' : 'rgba(255,255,255,.08)'; c.beginPath(); c.roundRect ? c.roundRect(70, cy - rh / 2 + 4, W - 140, rh - 8, 22) : c.rect(70, cy - rh / 2 + 4, W - 140, rh - 8); c.fill();
+      c.fillStyle = isWinner(r.u) ? 'rgba(242,194,48,.22)' : 'rgba(255,255,255,.08)'; c.beginPath(); c.roundRect ? c.roundRect(70, cy - rh / 2 + 4, W - 140, rh - 8, 22) : c.rect(70, cy - rh / 2 + 4, W - 140, rh - 8); c.fill();
       circle(await avatarImg(pl, 200), pl, 130, cy, Math.min(34, rh / 2 - 8), 0);
       c.textAlign = 'left'; c.fillStyle = '#fff'; c.font = '700 40px ' + F; c.fillText(pl.name, 190, cy + 14);
       const s2 = st[r.u] || {}; const bits = [s2.inf ? '🦠 ' + s2.inf : '', s2.cur ? '💊 ' + s2.cur : '', s2.des ? '💥 ' + s2.des : ''].filter(Boolean).join('   ');
@@ -3995,9 +4082,9 @@ if (typeof module !== 'undefined') module.exports = Bot;
     const quar = (g.quarantine || []).length;
     let overlay = '';
     if (g.status === 'ended') {
-      const won = g.winner === me;
-      overlay = '<div class="overlay"><div class="card-box banner"><h2>' + (won ? '¡Ganaste!' : esc(shortName(g.winner)) + ' ganó') + '</h2>' +
-        '<p class="note">' + (won ? 'Completaste un cuerpo sano.' : 'Completó un cuerpo sano.') + '</p>' + scoreLine() + '<div class="bar">' +
+      const won = iWon(), tw = !!g.winTeam, wn = tw ? g.winTeam.map(shortName).join(' y ') : '';
+      overlay = '<div class="overlay"><div class="card-box banner"><h2>' + (tw ? (won ? '¡Ganó tu equipo!' : 'Ganó el equipo de ' + esc(wn)) : (won ? '¡Ganaste!' : esc(shortName(g.winner)) + ' ganó')) + '</h2>' +
+        '<p class="note">' + (tw ? (g.winner === me ? 'Completaste un cuerpo sano y tu equipo gana.' : esc(shortName(g.winner)) + ' completó un cuerpo sano y el equipo gana.') : (won ? 'Completaste un cuerpo sano.' : 'Completó un cuerpo sano.')) + '</p>' + scoreLine() + '<div class="bar">' +
         '<button class="btn alt" data-act="share"' + (ui.sharing ? ' disabled' : '') + '>' + (ui.sharing ? 'Preparando…' : '📤 Compartir resultado') + '</button>' +
         (g.host === me ? '<button class="btn" data-act="again">Nueva partida</button>' : '<button class="btn alt" disabled>Esperando al anfitrión</button>') +
         '<button class="btn alt" data-act="leave">Salir</button></div></div></div>';
@@ -4122,6 +4209,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
     if (act === 'again') return again();
     if (act === 'addbot') return addBot();
     if (act === 'rmbot') return removeBot(t.dataset.p);
+    if (act === 'teamsw') return switchTeam(t.dataset.p);
     if (act === 'menu') { ui.menu = !ui.menu; ui.confirm = ''; return render(); }
     if (act === 'menu-reset') { if (ui.confirm === 'reset') return resetToLobby(); ui.confirm = 'reset'; return render(); }
     if (act === 'menu-close') { if (ui.confirm === 'close') return closeRoom(); ui.confirm = 'close'; return render(); }
@@ -4162,7 +4250,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
         ui.first = null; ui.mode = (ui.sel && ui.sel.k === 'failed') ? null : null; ui.err = ''; ui.info = '';
         const ex = myExtra();
         if (ex && ex.only && ui.sel && ex.only.indexOf(ui.sel.i) < 0) { ui.err = 'Solo puedes jugar la carta recuperada.'; ui.sel = null; }
-        else if (ex && ui.sel && ui.sel.t === 'x' && ['overtime', 'second', 'apparition'].indexOf(ui.sel.k) >= 0) { ui.err = 'Esa carta no se puede jugar dentro de un turno extra. Descártala o juega otra.'; ui.sel = null; }
+        else if (ex && ui.sel && ui.sel.t === 'x' && (ex.kind === 'yamevoy' ? ['overtime'] : ['overtime', 'second', 'apparition']).indexOf(ui.sel.k) >= 0) { ui.err = 'Esa carta no se puede jugar dentro de un turno extra. Descártala o juega otra.'; ui.sel = null; }
       }
       return render();
     }
