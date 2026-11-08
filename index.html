@@ -6,7 +6,7 @@
 <title>Virus!</title>
 <meta name="description" content="Virus! el juego de cartas, en línea y sin cuentas">
 <meta name="theme-color" content="#0F473A">
-<script>window.VIRUS_BUILD='06-nov 22:02';</script>
+<script>window.VIRUS_BUILD='07-nov 19:50';</script>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -1090,7 +1090,7 @@ const Engine = (function () {
       case 'quarantine': return okQuar(g, u, pid, idx);
       case 'swap':
         if (redir) return okSwap(g, u, g.redirect.a.myIdx, pid, idx);
-        if (!first) { const my = g.bodies[u][idx]; return pid === u && !!my && st(my) !== 'immune'; }
+        if (!first) { const my = g.bodies[u][idx]; return pid === u && !!my; } // Trasplante: tu órgano puede estar en cualquier estado, también inmunizado
         return okSwap(g, u, first.idx, pid, idx);
       case 'alien':
         if (!first) return pid !== u && !!(g.bodies[pid] && g.bodies[pid][idx]) && Object.keys(g.bodies).some(p => p !== pid && p !== u && g.bodies[p].some((_, j) => okAlien(g, u, pid, idx, p, j)));
