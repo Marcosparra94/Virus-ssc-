@@ -6,7 +6,7 @@
 <title>Virus!</title>
 <meta name="description" content="Virus! el juego de cartas, en línea y sin cuentas">
 <meta name="theme-color" content="#0F473A">
-<script>window.VIRUS_BUILD='07-nov 19:50';</script>
+<script>window.VIRUS_BUILD='09-nov 00:45';</script>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -1113,7 +1113,7 @@ const Engine = (function () {
   // ---------- Contagio ----------
   // Para cada virus propio, a qué órganos de otros jugadores puede pasar (libres, o ya infectados) (si el color encaja y no choca con un órgano que ya tengan)
   // Un virus por Contagio puede caer en un órgano libre (lo infecta) o en uno ya infectado (lo destruye, como un segundo virus)
-  const spreadTarget = (g, p, o, v) => { const s = st(o); return hit(v.c, o.o.c) && (s === 'infected' || (s === 'free' && !convBlocked(g, p, o, v.c))); };
+  const spreadTarget = (g, p, o, v) => { const s = st(o); if (!hit(v.c, o.o.c)) return false; if (s === 'infected') return true; if (s === 'free') return !convBlocked(g, p, o, v.c); return s === 'vacc' && (!!v.ev || !o.m[0].ex); }; // libre, infectado o vacunado (a una vacuna experimental solo la quita un virus evolucionado); inmunizados y biónicos no
   function spreadOptions(g, u) {
     const res = [];
     g.bodies[u].forEach((sl, si) => {
@@ -1275,17 +1275,19 @@ const Engine = (function () {
           const plan = Array.isArray(a.moves) ? a.moves.filter(m => prot.indexOf(m.p) < 0) : spreadPlan(g, u, prot);
           // Los órganos se toman por referencia (al destruir uno, los índices de los demás se mueven) y todo ocurre en dos fases:
           // 1) los virus salen de sus órganos; 2) llegan a su destino. Así un órgano de quien contagia puede ser origen y destino a la vez sin duplicar nada.
-          const srcs = plan.map(m => body[m.si]), vs = srcs.map(sl => sl.m.find(x => x.t === 'v')), tgts = plan.map(m => g.bodies[m.p][m.i]), boom = [];
+          const srcs = plan.map(m => body[m.si]), vs = srcs.map(sl => sl.m.find(x => x.t === 'v')), tgts = plan.map(m => g.bodies[m.p][m.i]), boom = [], unv = [];
           srcs.forEach((sl, k) => { sl.m = sl.m.filter(x => x !== vs[k]); });
           plan.forEach((m, k) => {
             const t = tgts[k], v = vs[k];
             if (st(t) === 'infected') { boom.push(on(t) + ' de ' + nm(m.p)); g.bodies[m.p] = g.bodies[m.p].filter(x => x !== t); D(t.o, ...t.m, v); }
+            else if (st(t) === 'vacc') { unv.push(on(t) + ' de ' + nm(m.p)); D(t.m.pop(), v); } // como un virus normal: la vacuna y el virus se descartan
             else { convert(t, v.c); t.m.push(v); }
           });
           if (plan.length) ST('spr', plan.length);
           if (boom.length) ST('des', boom.length);
+          if (unv.length && !boom.length) EV('unvaccinate');
           const quedan = g.bodies[u].filter(sl => sl.m.some(x => x.t === 'v')).length; // virus que no tuvieron a dónde ir
-          D(c); L(nm(u) + ' contagia: pasa ' + plan.length + ' virus' + (plan.length ? ' (' + plan.map(m => m.p === u ? 'de vuelta a su propio cuerpo' : 'a ' + nm(m.p)).join(', ') + ')' : '') + (boom.length ? ' y destruye ' + boom.join(', ') : '') + (quedan ? '; ' + quedan + (quedan === 1 ? ' se queda' : ' se quedan') + ' sin órgano donde caber' : '')); break;
+          D(c); L(nm(u) + ' contagia: pasa ' + plan.length + ' virus' + (plan.length ? ' (' + plan.map(m => m.p === u ? 'de vuelta a su propio cuerpo' : 'a ' + nm(m.p)).join(', ') + ')' : '') + (boom.length ? ' y destruye ' + boom.join(', ') : '') + (unv.length ? (boom.length ? '; y ' : ' y ') + 'quita la vacuna de ' + unv.join(', ') : '') + (quedan ? '; ' + quedan + (quedan === 1 ? ' se queda' : ' se quedan') + ' sin órgano donde caber' : '')); break;
         }
         case 'glove':
           g.order.forEach(p => { if (p === u || prot.indexOf(p) >= 0) return; g.discard.push(...g.hands[p]); g.hands[p] = []; g.skip[p] = true; });
@@ -3472,7 +3474,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
       '<p>Las medicinas normales solo curan virus normales; las experimentales curan también los evolucionados. Un virus evolucionado puede quitar cualquier vacuna; uno normal no puede quitar una experimental. Las cartas multicolor valen contra cualquier color, con la misma jerarquía. El órgano mutante solo lo afectan virus y medicinas multicolor.</p>' +
       '<p>Cada turno dura 30 segundos. Si no juegas a tiempo, se descarta tu mano y el juego sigue; tras dos turnos así, tus turnos duran 10 segundos hasta que vuelvas a jugar.</p>' +
       '<p>Traje de protección: solo contra virus y contra Contagio. Si te lanzan un virus (o un Contagio te va a pasar uno) y tienes el traje, te pregunta si lo usas (10 segundos; si no contestas, no se usa). Al usarlo robas una carta. Cada traje rebota un solo virus. Contra un virus eliges a quién rebotarlo o lo mandas al descarte; contra Contagio eliges a quién rebotar ese virus: un órgano libre o infectado de otro jugador, o de vuelta a quien contagió (a su órgano de origen o a otro suyo donde pueda caer). Si el virus rebota hacia alguien que también tiene traje (incluso quien lo lanzó), esa persona puede rebotarlo otra vez.</p>' +
-      '<p>Contagio: pasas todos tus virus que puedas a órganos de otros jugadores que estén libres o ya infectados (los vacunados e inmunes no); tú eliges adónde va cada uno. Si cae en un órgano infectado, lo destruye, como un segundo virus.</p>' +
+      '<p>Contagio: pasas todos tus virus que puedas a órganos de otros jugadores que estén libres, infectados o vacunados (los inmunizados y biónicos no); tú eliges adónde va cada uno. Si cae en un órgano infectado, lo destruye, como un segundo virus; si cae en uno vacunado, le quita la vacuna, como un virus normal (una vacuna experimental solo la quita un virus evolucionado).</p>' +
       '<p>Trasplante: cambias un órgano tuyo por uno de otro jugador, en cualquier estado. Trasplante alienígena: cambias entre sí órganos de otros dos jugadores (no tuyos).</p></details>';
   }
 
@@ -3571,7 +3573,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
     if (inRedir()) {
       const c = ui.sel;
       if (!c) return 'Elige un nuevo objetivo.';
-      if (g.redirect.kind === 'spread') return g.redirect.by === g.redirect.u ? '<b>¡Traje de protección!</b> Toca a quién rebotarle de nuevo ese virus (un órgano libre o infectado de otro jugador).' : '<b>¡Traje de protección!</b> Toca a quién rebotarle ese virus: un órgano libre o infectado de otro jugador, o un órgano de <b>' + esc(shortName(g.redirect.u)) + '</b>, que contagió.';
+      if (g.redirect.kind === 'spread') return g.redirect.by === g.redirect.u ? '<b>¡Traje de protección!</b> Toca a quién rebotarle de nuevo ese virus (un órgano libre, infectado o vacunado de otro jugador).' : '<b>¡Traje de protección!</b> Toca a quién rebotarle ese virus: un órgano libre, infectado o vacunado de otro jugador, o un órgano de <b>' + esc(shortName(g.redirect.u)) + '</b>, que contagió.';
       if (g.redirect.by) return '<b>¡Traje de protección!</b> Toca a quién rebotarle el virus (cualquier cuerpo menos el tuyo) o descártalo.';
       const where = (c.t === 'v' || c.k === 'failed') ? ' (puede ser tu propio cuerpo)' : '';
       return '<b>Traje de protección.</b> Elige otro objetivo' + where + ', o pulsa «Sin objetivo».';
@@ -3620,9 +3622,9 @@ if (typeof module !== 'undefined') module.exports = Bot;
       case 'bodies': return 'Elige el sentido en que todos pasan su cuerpo.';
       case 'suit': return 'Se juega como respuesta cuando alguien te ataca.';
       case 'spread': {
-        if (E.spreadMax(g, me) === 0) { const mine = E.spreadOptions(g, me); if (!mine.length) return 'No tienes virus en tus órganos para pasar.'; return 'Ninguno de tus virus (' + mine.map(o => o.v.c === 'wild' ? 'multicolor' : E.ONAME[o.v.c].toLowerCase()).join(', ') + ') cabe en un órgano libre o infectado de otro jugador: solo caen en órganos de su mismo color (o multicolor); los vacunados, inmunes y biónicos no cuentan, y el mutante solo recibe virus multicolor.'; }
+        if (E.spreadMax(g, me) === 0) { const mine = E.spreadOptions(g, me); if (!mine.length) return 'No tienes virus en tus órganos para pasar.'; return 'Ninguno de tus virus (' + mine.map(o => o.v.c === 'wild' ? 'multicolor' : E.ONAME[o.v.c].toLowerCase()).join(', ') + ') cabe en un órgano libre, infectado o vacunado de otro jugador: solo caen en órganos de su mismo color (o multicolor); los inmunizados y biónicos no cuentan (y una vacuna experimental solo la quita un virus evolucionado), y el mutante solo recibe virus multicolor.'; }
         const s = spChoice();
-        return s.done ? 'Pasa tus virus a órganos libres o infectados de otros jugadores.' : 'Contagio · virus ' + (s.moves.length + 1) + ' de ' + s.ch.M + ' (de tu ' + E.ONAME[g.bodies[me][s.cur.si].o.c].toLowerCase() + '): toca el órgano (libre o infectado) que lo recibirá; si ya está infectado, lo destruye. Debes pasar todos los que puedas.' + (s.ch.canSkip ? ' Puedes dejar este si otro ocupa su lugar.' : '');
+        return s.done ? 'Pasa tus virus a órganos libres, infectados o vacunados de otros jugadores.' : 'Contagio · virus ' + (s.moves.length + 1) + ' de ' + s.ch.M + ' (de tu ' + E.ONAME[g.bodies[me][s.cur.si].o.c].toLowerCase() + '): toca el órgano (libre, infectado o vacunado) que lo recibirá; si ya está infectado, lo destruye; si está vacunado, le quita la vacuna. Debes pasar todos los que puedas.' + (s.ch.canSkip ? ' Puedes dejar este si otro ocupa su lugar.' : '');
       }
       case 'glove': return 'Todos los demás descartan su mano y pierden su siguiente turno.';
       case 'overtime': return 'Después podrás jugar tus otras dos cartas.';
@@ -3674,7 +3676,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
       case 'glove': return who + ' juega Guante de látex: descartarías tu mano.';
       case 'spread': {
         const mv = g.sp && g.sp.moves[P.mv], tsl = mv && g.bodies[me] && g.bodies[me][mv.dest.i], mine = P.u === me, back = !!(mv && mine && mv.dest.i === mv.si);
-        const to = mv ? org(me, mv.dest.i) + (back ? ' (de donde salió)' : tsl && E.st(tsl) === 'infected' ? ' (que ya está infectado: lo destruiría)' : '') : 'órgano';
+        const to = mv ? org(me, mv.dest.i) + (back ? ' (de donde salió)' : tsl && E.st(tsl) === 'infected' ? ' (que ya está infectado: lo destruiría)' : tsl && E.st(tsl) === 'vacc' ? ' (que está vacunado: le quitaría la vacuna)' : '') : 'órgano';
         if (P.chain) return mine ? '¡Tu propio virus rebotó de vuelta hacia ti! Va contra tu ' + to + '. Puedes rebotarlo otra vez con tu traje.' : '¡Un virus de ' + who + ' rebotó hacia ti! Va contra tu ' + to + '. Puedes rebotarlo con tu traje.';
         return who + ' juega Contagio: te pasaría un virus a tu ' + to + '. Un traje rebota un solo virus.'; }
       case 'bodies': return who + ' juega Cambio de cuerpos: perderías tu cuerpo.';
@@ -3816,7 +3818,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
     switch (c.k) {
       case 'swap': return 'Cambias uno de tus órganos por uno de otro jugador, en cualquier estado (infectado, vacunado o inmunizado). No pueden quedar dos del mismo color en un cuerpo.';
       case 'steal': return 'Robas un órgano de otro jugador (que no esté inmunizado) y lo pones en tu cuerpo. No puedes quedarte con dos del mismo color.';
-      case 'spread': return 'Pasas TODOS tus virus que puedas a órganos de otros jugadores libres o ya infectados (si ya está infectado, lo destruye). Tú eliges adónde va cada uno; el que no pueda pasar se queda contigo. No afecta a órganos vacunados ni inmunes.';
+      case 'spread': return 'Pasas TODOS tus virus que puedas a órganos de otros jugadores libres, infectados o vacunados (si está infectado, lo destruye; si está vacunado, le quita la vacuna). Tú eliges adónde va cada uno; el que no pueda pasar se queda contigo. No afecta a órganos inmunizados ni biónicos.';
       case 'glove': return 'Todos los demás jugadores descartan su mano completa y pierden su siguiente turno de juego.';
       case 'error': return 'Cambias todo tu cuerpo por el de otro jugador (órganos, virus y vacunas).';
       case 'overtime': return 'Juegas hasta 2 cartas más de tu mano en este mismo turno.';
