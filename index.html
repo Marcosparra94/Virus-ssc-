@@ -6,7 +6,7 @@
 <title>Virus!</title>
 <meta name="description" content="Virus! el juego de cartas, en línea y sin cuentas">
 <meta name="theme-color" content="#0F473A">
-<script>window.VIRUS_BUILD='09-nov 00:45';</script>
+<script>window.VIRUS_BUILD='11-nov 09:57';</script>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -858,10 +858,10 @@ const Engine = (function () {
     swap: 'Trasplante', steal: 'Ladrón de órganos', spread: 'Contagio', glove: 'Guante de látex', error: 'Error médico',
     overtime: 'Horas extra', second: 'Segunda opinión', suit: 'Traje de protección', quarantine: 'Cuarentena',
     apparition: 'Aparición', bodies: 'Cambio de cuerpos', alien: 'Trasplante alienígena', thief: 'Ladrón de colores',
-    failed: 'Experimento fallido', trick: 'Truco o trato'
+    failed: 'Experimento fallido', trick: 'Truco o trato', unimmune: 'Desinmunizar'
   };
   // Juego base (68 cartas), según el reglamento oficial
-  const COUNTS = { organ: 5, virus: 4, med: 4, wildOrgan: 1, wildVirus: 1, wildMed: 4, treat: { swap: 2, steal: 3, spread: 3, glove: 1, error: 1 } };
+  const COUNTS = { organ: 5, virus: 4, med: 4, wildOrgan: 1, wildVirus: 1, wildMed: 4, treat: { swap: 2, steal: 3, spread: 3, glove: 1, error: 1, unimmune: 2 } };
 
   const clone = o => JSON.parse(JSON.stringify(o));
   function shuffle(a) {
@@ -1021,6 +1021,13 @@ const Engine = (function () {
     }
     return st(sl) !== 'immune' && canReceive(g.bodies[u], sl.o, -1);
   }
+  // Desinmunizar: quita TODAS las vacunas (una o las dos) de un órgano vacunado o inmunizado de un rival. Se juega solo contra rivales y el Traje de protección no la frena.
+  function okUnimmune(g, u, pid, idx) {
+    const sl = g.bodies[pid] && g.bodies[pid][idx];
+    if (!sl || pid === u) return false;
+    const s = st(sl);
+    return s === 'vacc' || s === 'immune';
+  }
   function okSwap(g, u, myIdx, pid, idx) { // Trasplante: un órgano mío por uno de otro jugador, en cualquier estado
     const my = g.bodies[u][myIdx], sl = g.bodies[pid] && g.bodies[pid][idx];
     if (!my || !sl || pid === u) return false;
@@ -1056,6 +1063,7 @@ const Engine = (function () {
     switch (c.k) {
       case 'swap': return (notEx(a.pid) && okSwap(g, u, a.myIdx, a.pid, a.idx)) ? null : 'Ese intercambio no es válido.';
       case 'steal': return (notEx(a.pid) && okSteal(g, u, a.pid, a.idx)) ? null : 'Ese órgano no se puede robar.';
+      case 'unimmune': return (notEx(a.pid) && okUnimmune(g, u, a.pid, a.idx)) ? null : 'Solo sobre un órgano de un rival que esté vacunado o inmunizado.';
       case 'thief': return (notEx(a.pid) && okSteal(g, u, a.pid, a.idx, c.c)) ? null : 'Ese órgano no se puede robar.';
       case 'alien': return (!mate(g, u, a.p1) && !mate(g, u, a.p2) && okAlien(g, u, a.p1, a.i1, a.p2, a.i2)) ? null : 'Elige órganos de dos jugadores distintos a ti.';
       case 'quarantine': return okQuar(g, u, a.pid, a.idx) ? null : 'Elige un órgano infectado.';
@@ -1080,12 +1088,13 @@ const Engine = (function () {
     if (redir && g.redirect && g.redirect.kind === 'spread') return spreadRedirCands(g).some(x => x.pid === pid && x.idx === idx);
     const ex = (redir && g.redirect) ? g.redirect.excluded : [];
     if (ex.indexOf(pid) >= 0 && !(c.t === 'x' && c.k === 'alien')) return false;
-    if (mate(g, actor(g, u, redir), pid) && (c.t === 'v' || (c.t === 'x' && (['steal', 'thief', 'swap', 'alien'].indexOf(c.k) >= 0 || (c.k === 'failed' && mode === 'v'))))) return false; // 2 vs 2: nada hostil contra el compañero
+    if (mate(g, actor(g, u, redir), pid) && (c.t === 'v' || (c.t === 'x' && (['steal', 'thief', 'swap', 'alien', 'unimmune'].indexOf(c.k) >= 0 || (c.k === 'failed' && mode === 'v'))))) return false; // 2 vs 2: nada hostil contra el compañero
     if (c.t === 'o') return c.c === 'mutant' && pid === u && !!g.bodies[u][idx];
     if (c.t === 'v') return okVirus(g, u, c, pid, idx, redir);
     if (c.t === 'm') return okMed(g, u, c, pid, idx);
     switch (c.k) {
       case 'steal': return okSteal(g, u, pid, idx);
+      case 'unimmune': return okUnimmune(g, u, pid, idx);
       case 'thief': return okSteal(g, u, pid, idx, c.c);
       case 'quarantine': return okQuar(g, u, pid, idx);
       case 'swap':
@@ -1197,7 +1206,7 @@ const Engine = (function () {
     if (c.t === 'v') v = [a.pid];
     else if (c.t === 'x') {
       switch (c.k) {
-        case 'steal': case 'thief': case 'swap': case 'error': case 'second': case 'trick': v = [a.pid]; break;
+        case 'steal': case 'thief': case 'swap': case 'error': case 'second': case 'trick': case 'unimmune': v = [a.pid]; break;
         case 'alien': v = [a.p1, a.p2].filter(p => p !== u); break;
         case 'failed': v = a.as === 'v' ? [a.pid] : []; break;
         case 'glove': case 'bodies': v = others; break;
@@ -1260,6 +1269,11 @@ const Engine = (function () {
           const sl = g.bodies[a.pid].splice(a.idx, 1)[0]; body.push(sl); D(c); ST('rob');
           if (c.k === 'thief' && sl.o.c === 'wild') { L(nm(u) + ' roba el órgano multicolor de ' + nm(a.pid) + ' haciéndolo pasar por ' + ONAME[c.c].toLowerCase() + ' (sigue siendo multicolor)'); break; } // solo se hace de cuenta que es de ese color para poder robarlo
           L(nm(u) + ' roba ' + dsc(sl) + ' de ' + nm(a.pid)); break;
+        }
+        case 'unimmune': {
+          const sl = g.bodies[a.pid][a.idx], n = sl.m.length, gone = sl.m.splice(0, sl.m.length);
+          D(c, ...gone); EV('unvaccinate');
+          L(nm(u) + ' desinmuniza ' + on(sl) + ' de ' + nm(a.pid) + ': le quita ' + (n >= 2 ? 'sus 2 vacunas' : 'la vacuna')); break;
         }
         case 'swap': {
           const mine = body[a.myIdx], theirs = g.bodies[a.pid][a.idx];
@@ -1857,6 +1871,9 @@ const Art = (function () {
       return miniHeart(35, 62, 1.35) + miniBrain(65, 66, 1.35) +
         P('M32 46 C42 33 59 34 68 46', null, '#6A4A9C', 3.4) + P('M68 46 l-8.5 0.5 M68 46 l-1.2 -8.6', null, '#6A4A9C', 3.4) +
         P('M68 86 C58 99 41 98 32 86', null, '#6A4A9C', 3.4) + P('M32 86 l8.5 -0.5 M32 86 l1.2 8.6', null, '#6A4A9C', 3.4);
+    },
+    unimmune: function () { // escudo roto en dos con un virus asomándose
+      return '<g stroke-linejoin="round" stroke-linecap="round"><g transform="translate(17 17) scale(.66)"><g transform="translate(50,50) scale(1.6)"><path d="M11.0 0.0 L17.0 0.0" fill="none" stroke="#2B2540" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" /><circle cx="17.0" cy="0.0" r="2.8" fill="#FF8A2B" stroke="#2B2540" stroke-width="2"/><path d="M8.9 6.5 L13.8 10.0" fill="none" stroke="#2B2540" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" /><circle cx="13.8" cy="10.0" r="2.8" fill="#FF8A2B" stroke="#2B2540" stroke-width="2"/><path d="M3.4 10.5 L5.3 16.2" fill="none" stroke="#2B2540" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" /><circle cx="5.3" cy="16.2" r="2.8" fill="#FF8A2B" stroke="#2B2540" stroke-width="2"/><path d="M-3.4 10.5 L-5.3 16.2" fill="none" stroke="#2B2540" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" /><circle cx="-5.3" cy="16.2" r="2.8" fill="#FF8A2B" stroke="#2B2540" stroke-width="2"/><path d="M-8.9 6.5 L-13.8 10.0" fill="none" stroke="#2B2540" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" /><circle cx="-13.8" cy="10.0" r="2.8" fill="#FF8A2B" stroke="#2B2540" stroke-width="2"/><path d="M-11.0 0.0 L-17.0 0.0" fill="none" stroke="#2B2540" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" /><circle cx="-17.0" cy="0.0" r="2.8" fill="#FF8A2B" stroke="#2B2540" stroke-width="2"/><path d="M-8.9 -6.5 L-13.8 -10.0" fill="none" stroke="#2B2540" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" /><circle cx="-13.8" cy="-10.0" r="2.8" fill="#FF8A2B" stroke="#2B2540" stroke-width="2"/><path d="M-3.4 -10.5 L-5.3 -16.2" fill="none" stroke="#2B2540" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" /><circle cx="-5.3" cy="-16.2" r="2.8" fill="#FF8A2B" stroke="#2B2540" stroke-width="2"/><path d="M3.4 -10.5 L5.3 -16.2" fill="none" stroke="#2B2540" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" /><circle cx="5.3" cy="-16.2" r="2.8" fill="#FF8A2B" stroke="#2B2540" stroke-width="2"/><path d="M8.9 -6.5 L13.8 -10.0" fill="none" stroke="#2B2540" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" /><circle cx="13.8" cy="-10.0" r="2.8" fill="#FF8A2B" stroke="#2B2540" stroke-width="2"/><circle cx="0" cy="0" r="12" fill="#7BD96A" stroke="#2B2540" stroke-width="3"/><circle cx="-4" cy="-2" r="2.6" fill="#fff"/><circle cx="4" cy="-2" r="2.6" fill="#fff"/><circle cx="-3.6" cy="-1.6" r="1.2" fill="#2B2540"/><circle cx="4.4" cy="-1.6" r="1.2" fill="#2B2540"/><path d="M-5 4 Q0 8 5 4" fill="none" stroke="#2B2540" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" /><path d="M-7 -6 L-2 -4 M7 -6 L2 -4" fill="none" stroke="#2B2540" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></g><path d="M50 12 L18 23 V50 C18 69 33 81 50 90 L46 70 L56 56 L44 42 L52 26 Z" fill="#3E73D8" stroke="#2B2540" stroke-width="3.4" stroke-linejoin="round" stroke-linecap="round" transform="translate(-9,2) rotate(-6 30 50)"/><path d="M50 12 L82 23 V50 C82 69 67 81 50 90 L46 70 L56 56 L44 42 L52 26 Z" fill="#4F86EE" stroke="#2B2540" stroke-width="3.4" stroke-linejoin="round" stroke-linecap="round" transform="translate(9,2) rotate(6 70 50)"/><path d="M24 40 H34 M24 52 H30" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M66 40 H76" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M50.0 87.0L51.3 90.2L54.8 90.5L52.1 92.7L52.9 96.0L50.0 94.2L47.1 96.0L47.9 92.7L45.2 90.5L48.7 90.2Z" fill="#FFE14D" stroke="#2B2540" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" /><path d="M44 8 L48 16 M56 8 L52 16" fill="none" stroke="#2B2540" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" /></g></g>';
     },
     steal: function () { // ladrón con antifaz que se lleva un corazón
       return '<g stroke-linejoin="round" stroke-linecap="round">' +
@@ -2656,7 +2673,7 @@ const Bot = (function () {
     if (c.t === 'o') { if (c.c === 'mutant') g.bodies[u].forEach((_, i) => out.push({ idx: i })); else out.push({}); return out; } // el mutante solo se juega sacrificando un órgano propio
     if (c.t === 'v' || c.t === 'm') { organs.forEach(o => out.push({ pid: o[0], idx: o[1] })); return out; }
     switch (c.k) {
-      case 'steal': case 'thief': case 'quarantine': organs.forEach(o => out.push({ pid: o[0], idx: o[1] })); break;
+      case 'steal': case 'thief': case 'quarantine': case 'unimmune': organs.forEach(o => out.push({ pid: o[0], idx: o[1] })); break;
       case 'swap': g.bodies[u].forEach((_, m) => organs.forEach(o => out.push({ myIdx: m, pid: o[0], idx: o[1] }))); break;
       case 'alien': organs.forEach(a => organs.forEach(b => { if (a[0] < b[0]) out.push({ p1: a[0], i1: a[1], p2: b[0], i2: b[1] }); })); break;
       case 'failed': organs.forEach(o => ['v', 'm'].forEach(as => out.push({ pid: o[0], idx: o[1], as }))); break;
@@ -2677,6 +2694,50 @@ const Bot = (function () {
       candidates(g, u, c).forEach(a => { if (!E.check(g, u, c, a, false)) out.push({ c, a }); });
     });
     return out;
+  }
+
+  // Qué tan valiosa es una carta para guardarla «para luego» (más alto = más vale la pena conservarla). Solo se usa al descartar.
+  const KEEP_MIN = 3.0; // desde este valor una carta se considera «para guardar»
+  function keepValue(g, u, c) {
+    const body = g.bodies[u], rivals = g.order.filter(p => p !== u && !E.mate(g, u, p)), goal = E.goal(g);
+    const rivalHas = pred => rivals.some(p => g.bodies[p].some(sl => pred(sl)));
+    const myInf = body.some(sl => E.st(sl) === 'infected'), myVirus = body.some(sl => sl.m.some(x => x.t === 'v'));
+    const rivalNear = rivals.some(p => S(g, p).h >= goal - 1);
+    if (c.t === 'x') {
+      switch (c.k) {
+        case 'suit': return 4;
+        case 'steal': case 'thief': case 'unimmune': return 3.4;  // piezas clave: se guardan hasta que haya un buen blanco
+        case 'error': return 3.4;                                  // cambiar cuerpos con un rival: salva una mala racha
+        case 'swap': case 'alien': return 3.1;
+        case 'bodies': return 3;
+        case 'overtime': return 3.1;
+        case 'failed': return 2.9;
+        case 'spread': return myVirus ? 3.6 : 2.2;                 // Contagio vale mucho si ya tengo virus puestos
+        case 'glove': return rivalNear ? 3.8 : 2.4;                // el guante es la salida de emergencia contra quien va ganando
+        case 'quarantine': return myInf ? 3.2 : 2.3;
+        case 'second': return 2.4;
+        case 'apparition': return g.discard.some(x => x.t === 'o') ? 2.8 : 2.1;
+        case 'trick': return 2.5;
+        default: return 2.5;
+      }
+    }
+    if (c.t === 'o') {
+      if (c.c === 'bionic' || c.c === 'wild') return 3.6;
+      if (c.c === 'mutant') return body.length ? 2.4 : 1.2;
+      if (E.canReceive(body, c, -1)) return 4;                     // un órgano que me falta
+      return 1.2;                                                  // repetido: solo sirve de repuesto
+    }
+    if (c.t === 'v') {
+      if (c.c === 'wild') return 3.2;
+      if (c.ev) return 2.7;
+      return rivalHas(sl => E.st(sl) !== 'immune' && E.st(sl) !== 'vacc' && (sl.o.c === c.c || sl.o.c === 'wild')) ? 2.5 : 1.4;
+    }
+    if (c.t === 'm') {
+      if (c.c === 'wild') return 3.2;
+      if (c.ex) return 2.7;
+      return body.some(sl => sl.o.c === c.c || sl.o.c === 'wild') ? 2.3 : 1.2;
+    }
+    return 1.5;
   }
 
   // Devuelve {type:'play', cardId, a} | {type:'discard', ids} | {type:'pass'}
@@ -2724,7 +2785,15 @@ const Bot = (function () {
     }
     if (top && top.d > 0.5) return { type: 'play', cardId: top.m.c.i, a: top.m.a };
     if (ex && ex.pass) return { type: 'pass' };
-    // Nada mejora la posición: descarta lo menos útil
+    // Nada mejora la posición: descarta lo menos útil, pero GUARDA «para luego» las cartas valiosas (ladrones, cambios de cuerpo, Error médico, Contagio, guante...)
+    if (levelOf(g, u) !== 'easy') {
+      const rk2 = hand.map(c => ({ id: c.i, kv: keepValue(g, u, c) + 0.05 * Math.max(-3, Math.min(0.5, best[c.i] === undefined ? -3 : best[c.i])) })).sort((a, b) => a.kv - b.kv);
+      // se guardan las 2 cartas más valiosas (si valen de verdad la pena) y se cambia el resto por cartas nuevas; guardar de más estorba: la mano se llena y ya no llegan cartas útiles
+      const keepers = rk2.slice().reverse().filter(x => x.kv >= KEEP_MIN).slice(0, 2).map(x => x.id);
+      let ids2 = rk2.filter(x => keepers.indexOf(x.id) < 0).map(x => x.id).slice(0, ex ? 1 : 3);
+      if (!ids2.length) ids2 = [rk2[0].id];
+      return { type: 'discard', ids: ids2 };
+    }
     const ranked = hand.map(c => ({ id: c.i, v: (c.t === 'x' && c.k === 'suit') ? 1 : (best[c.i] === undefined ? -1e9 : best[c.i]) })).sort((a, b) => a.v - b.v);
     let ids = ranked.filter(x => x.v <= 0.5).slice(0, ex ? 1 : 3).map(x => x.id);
     if (!ids.length) ids = [ranked[0].id];
@@ -3474,6 +3543,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
       '<p>Las medicinas normales solo curan virus normales; las experimentales curan también los evolucionados. Un virus evolucionado puede quitar cualquier vacuna; uno normal no puede quitar una experimental. Las cartas multicolor valen contra cualquier color, con la misma jerarquía. El órgano mutante solo lo afectan virus y medicinas multicolor.</p>' +
       '<p>Cada turno dura 30 segundos. Si no juegas a tiempo, se descarta tu mano y el juego sigue; tras dos turnos así, tus turnos duran 10 segundos hasta que vuelvas a jugar.</p>' +
       '<p>Traje de protección: solo contra virus y contra Contagio. Si te lanzan un virus (o un Contagio te va a pasar uno) y tienes el traje, te pregunta si lo usas (10 segundos; si no contestas, no se usa). Al usarlo robas una carta. Cada traje rebota un solo virus. Contra un virus eliges a quién rebotarlo o lo mandas al descarte; contra Contagio eliges a quién rebotar ese virus: un órgano libre o infectado de otro jugador, o de vuelta a quien contagió (a su órgano de origen o a otro suyo donde pueda caer). Si el virus rebota hacia alguien que también tiene traje (incluso quien lo lanzó), esa persona puede rebotarlo otra vez.</p>' +
+      '<p><b>Desinmunizar:</b> quita todas las vacunas de un órgano de un rival: una si está vacunado, las dos si está inmunizado (también las experimentales), y el órgano queda libre. Solo se juega contra rivales, y el Traje de protección no la frena.</p>' +
       '<p>Contagio: pasas todos tus virus que puedas a órganos de otros jugadores que estén libres, infectados o vacunados (los inmunizados y biónicos no); tú eliges adónde va cada uno. Si cae en un órgano infectado, lo destruye, como un segundo virus; si cae en uno vacunado, le quita la vacuna, como un virus normal (una vacuna experimental solo la quita un virus evolucionado).</p>' +
       '<p>Trasplante: cambias un órgano tuyo por uno de otro jugador, en cualquier estado. Trasplante alienígena: cambias entre sí órganos de otros dos jugadores (no tuyos).</p></details>';
   }
@@ -3613,6 +3683,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
       case 'swap': return !ui.first ? 'Primero toca uno de tus órganos (aunque esté infectado, vacunado o inmunizado).' : 'Ahora toca el órgano rival que quieres recibir (en cualquier estado).';
       case 'alien': return !ui.first ? 'Toca un órgano de otro jugador (en cualquier estado). No sirve con los tuyos.' : 'Ahora toca un órgano de un jugador distinto (tampoco tuyo): se intercambian entre ellos.';
       case 'steal': return 'Toca el órgano rival que quieres robar.';
+      case 'unimmune': return 'Toca un órgano rival vacunado o inmunizado: le quitas todas sus vacunas.';
       case 'thief': return 'Toca un órgano de ' + E.ONAME[c.c].toLowerCase() + ' de otro jugador (aunque esté inmunizado), o su órgano multicolor si ni tú ni él tienen ya ' + E.ONAME[c.c].toLowerCase() + '.';
       case 'quarantine': return E.cursed(g, me) ? 'Toca un órgano infectado (tuyo o de otro) para aislar su virus.' : 'Toca uno de tus órganos infectados para aislar su virus.';
       case 'failed': return !ui.mode ? 'Elige si actúa como virus o como medicina.' : (ui.mode === 'v' ? 'Toca un órgano rival infectado o vacunado.' : 'Toca un órgano tuyo infectado (con cualquier virus, también evolucionado) o vacunado.');
@@ -3818,6 +3889,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
     switch (c.k) {
       case 'swap': return 'Cambias uno de tus órganos por uno de otro jugador, en cualquier estado (infectado, vacunado o inmunizado). No pueden quedar dos del mismo color en un cuerpo.';
       case 'steal': return 'Robas un órgano de otro jugador (que no esté inmunizado) y lo pones en tu cuerpo. No puedes quedarte con dos del mismo color.';
+      case 'unimmune': return 'Quita todas las vacunas de un órgano de un rival: una si está vacunado, las dos si está inmunizado (también las experimentales). Solo contra rivales. El Traje de protección no la detiene.';
       case 'spread': return 'Pasas TODOS tus virus que puedas a órganos de otros jugadores libres, infectados o vacunados (si está infectado, lo destruye; si está vacunado, le quita la vacuna). Tú eliges adónde va cada uno; el que no pueda pasar se queda contigo. No afecta a órganos inmunizados ni biónicos.';
       case 'glove': return 'Todos los demás jugadores descartan su mano completa y pierden su siguiente turno de juego.';
       case 'error': return 'Cambias todo tu cuerpo por el de otro jugador (órganos, virus y vacunas).';
