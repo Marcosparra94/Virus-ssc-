@@ -6,7 +6,7 @@
 <title>Virus!</title>
 <meta name="description" content="Virus! el juego de cartas, en línea y sin cuentas">
 <meta name="theme-color" content="#0F473A">
-<script>window.VIRUS_BUILD='11-nov 09:57';</script>
+<script>window.VIRUS_BUILD='17-nov 18:10';</script>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -913,6 +913,8 @@ const Engine = (function () {
   const convBlocked = (g, pid, sl, cc) => sl.o.c === 'wild' && isColor(cc) && g.bodies[pid].some(s => s !== sl && s.o.c === cc);
   const convert = (sl, cc) => { if (sl.o.c === 'wild' && isColor(cc)) { sl.o.orig = 'wild'; sl.o.c = cc; } };
   const unconvert = o => { if (o && o.orig) { o.c = o.orig; delete o.orig; } return o; };
+  // Un multicolor convertido vuelve a ser multicolor cuando se queda sin virus ni medicinas (curado, vacuna quitada, virus contagiado a otro)
+  const settle = g => { Object.keys(g.bodies).forEach(p => g.bodies[p].forEach(sl => { if (sl.o && sl.o.orig && sl.m.length === 0) unconvert(sl.o); })); };
   const healthy = (g, u) => g.bodies[u].filter(s => st(s) !== 'infected').length;
   const cursed = (g, u) => !!(g.curse && g.curse.at === u);
   // Duelo: 5 órganos sanos, pero solo si hay un 5.º órgano posible (el biónico de Evolution); el multicolor, al convertirse, ocupa un color
@@ -1359,6 +1361,7 @@ const Engine = (function () {
     return true;
   }
   function finish(g, u) {
+    settle(g);
     g.extra = null;
     if (g.idle) delete g.idle[u];
     if (g.status !== 'ended') {
@@ -1379,6 +1382,7 @@ const Engine = (function () {
   }
   // Tras jugar una carta: ¿sigue el turno (fase extra) o termina?
   function proceed(g, u, start) {
+    settle(g);
     if (checkWin(g, u)) { g.seq++; g.log = g.log.slice(-80); return { g }; }
     if (start) {
       if (start.n <= 0 || !g.hands[u].length) return finish(g, u);
