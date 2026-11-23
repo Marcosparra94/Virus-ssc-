@@ -6,7 +6,7 @@
 <title>Virus!</title>
 <meta name="description" content="Virus! el juego de cartas, en línea y sin cuentas">
 <meta name="theme-color" content="#0F473A">
-<script>window.VIRUS_BUILD='17-nov 18:10';</script>
+<script>window.VIRUS_BUILD='23-nov 12:05';</script>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -992,7 +992,7 @@ const Engine = (function () {
     if (c.failed) return (s === 'infected' || s === 'vacc') && sl.o.c !== 'bionic'; // como virus destruye un órgano infectado o quita cualquier vacuna, también las experimentales
     if (!hit(c.c, sl.o.c) || s === 'immune') return false;
     if (s === 'vacc' && !c.ev && sl.m[0].ex) return false; // un virus normal no puede quitar una vacuna experimental
-    if (s === 'free' && convBlocked(g, pid, sl, c.c)) return false;
+    if (convBlocked(g, pid, sl, c.c)) return false; // un multicolor no puede tomar un color que su dueño ya tiene (esté libre, vacunado o infectado)
     return true;
   }
   // Medicina (básica, experimental o Experimento fallido como medicina)
@@ -1006,9 +1006,9 @@ const Engine = (function () {
     if (s === 'immune') return false;
     if (!c.ex) {
       if (!hit(c.c, sl.o.c)) return false;
-      return s === 'infected' ? !sl.m[0].ev : !convBlocked(g, pid, sl, c.c);
+      return s === 'infected' ? (!sl.m[0].ev && !convBlocked(g, pid, sl, c.c)) : !convBlocked(g, pid, sl, c.c);
     }
-    if (s === 'infected') return mm(c.c, sl.m[0].c);
+    if (s === 'infected') return mm(c.c, sl.m[0].c) && !convBlocked(g, pid, sl, c.c);
     return hit(c.c, sl.o.c) && !convBlocked(g, pid, sl, c.c);
   }
   function okSteal(g, u, pid, idx, color) { // color: Ladrón de colores (cualquier estado)
@@ -1043,7 +1043,7 @@ const Engine = (function () {
   function okQuar(g, u, pid, idx) {
     const sl = g.bodies[pid] && g.bodies[pid][idx];
     if (!sl || st(sl) !== 'infected') return false;
-    return pid === u || cursed(g, u) || mate(g, u, pid); // en 2 vs 2 también puedes poner en cuarentena un virus de tu compañero
+    return pid === u || mate(g, u, pid); // (Truco o trato solo se pasa con medicinas o Experimento fallido, no con cuarentena) en 2 vs 2 también puedes poner en cuarentena un virus de tu compañero
   }
   const pseudo = (a) => ({ t: a.as, c: 'any', failed: 1 });
 
@@ -1124,7 +1124,7 @@ const Engine = (function () {
   // ---------- Contagio ----------
   // Para cada virus propio, a qué órganos de otros jugadores puede pasar (libres, o ya infectados) (si el color encaja y no choca con un órgano que ya tengan)
   // Un virus por Contagio puede caer en un órgano libre (lo infecta) o en uno ya infectado (lo destruye, como un segundo virus)
-  const spreadTarget = (g, p, o, v) => { const s = st(o); if (!hit(v.c, o.o.c)) return false; if (s === 'infected') return true; if (s === 'free') return !convBlocked(g, p, o, v.c); return s === 'vacc' && (!!v.ev || !o.m[0].ex); }; // libre, infectado o vacunado (a una vacuna experimental solo la quita un virus evolucionado); inmunizados y biónicos no
+  const spreadTarget = (g, p, o, v) => { const s = st(o); if (!hit(v.c, o.o.c)) return false; if (convBlocked(g, p, o, v.c)) return false; if (s === 'infected') return true; if (s === 'free') return true; return s === 'vacc' && (!!v.ev || !o.m[0].ex); }; // libre, infectado o vacunado (a una vacuna experimental solo la quita un virus evolucionado); inmunizados y biónicos no
   function spreadOptions(g, u) {
     const res = [];
     g.bodies[u].forEach((sl, si) => {
@@ -1333,7 +1333,7 @@ const Engine = (function () {
         case 'trick': g.curse = { card: c, at: a.pid }; L(nm(u) + ' lanza Truco o trato a ' + nm(a.pid) + ': no podrá ganar'); break;
         case 'quarantine': {
           const sl = g.bodies[a.pid][a.idx], v = sl.m.find(x => x.t === 'v'); sl.m = []; Q(v); D(c);
-          L(nm(u) + ' pone en cuarentena un virus de ' + on(sl)); passCurse(a.pid); break;
+          L(nm(u) + ' pone en cuarentena un virus de ' + on(sl)); break;
         }
         case 'failed': {
           if (a.as === 'v') doVirus(c, a.pid, a.idx); else doMed(c, a.pid, a.idx);
@@ -3689,7 +3689,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
       case 'steal': return 'Toca el órgano rival que quieres robar.';
       case 'unimmune': return 'Toca un órgano rival vacunado o inmunizado: le quitas todas sus vacunas.';
       case 'thief': return 'Toca un órgano de ' + E.ONAME[c.c].toLowerCase() + ' de otro jugador (aunque esté inmunizado), o su órgano multicolor si ni tú ni él tienen ya ' + E.ONAME[c.c].toLowerCase() + '.';
-      case 'quarantine': return E.cursed(g, me) ? 'Toca un órgano infectado (tuyo o de otro) para aislar su virus.' : 'Toca uno de tus órganos infectados para aislar su virus.';
+      case 'quarantine': return g.teams ? 'Toca uno de tus órganos infectados o de tu compañero para aislar su virus.' : 'Toca uno de tus órganos infectados para aislar su virus.';
       case 'failed': return !ui.mode ? 'Elige si actúa como virus o como medicina.' : (ui.mode === 'v' ? 'Toca un órgano rival infectado o vacunado.' : 'Toca un órgano tuyo infectado (con cualquier virus, también evolucionado) o vacunado.');
       case 'error': return 'Toca al jugador con quien cambiarás de cuerpo.';
       case 'second': return 'Toca al jugador con quien cambiarás de mano.';
