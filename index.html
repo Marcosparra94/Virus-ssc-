@@ -6,7 +6,7 @@
 <title>Virus!</title>
 <meta name="description" content="Virus! el juego de cartas, en línea y sin cuentas">
 <meta name="theme-color" content="#0F473A">
-<script>window.VIRUS_BUILD='23-nov 12:05';</script>
+<script>window.VIRUS_BUILD='23-nov 23:40';</script>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -1008,7 +1008,7 @@ const Engine = (function () {
       if (!hit(c.c, sl.o.c)) return false;
       return s === 'infected' ? (!sl.m[0].ev && !convBlocked(g, pid, sl, c.c)) : !convBlocked(g, pid, sl, c.c);
     }
-    if (s === 'infected') return mm(c.c, sl.m[0].c) && !convBlocked(g, pid, sl, c.c);
+    if (s === 'infected') return mm(c.c, sl.m[0].c) && hit(c.c, sl.o.c) && !convBlocked(g, pid, sl, c.c); // además del virus, la medicina debe ser del color del órgano (un virus comodín no se cura con cualquier color)
     return hit(c.c, sl.o.c) && !convBlocked(g, pid, sl, c.c);
   }
   function okSteal(g, u, pid, idx, color) { // color: Ladrón de colores (cualquier estado)
@@ -2823,7 +2823,15 @@ const Bot = (function () {
     const R = g.redirect;
     if (R && R.kind === 'spread') { // virus de Contagio rebotado: lo manda al rival que más cerca está de ganar (volver con quien contagió es la última opción)
       const cs = E.redirectCandidates(g); let best = null;
-      cs.forEach(a => { const sc = (a.pid === R.u ? -50 : S(g, a.pid).h * 10 + 5) + Math.random() * 6; if (!best || sc > best.sc) best = { sc, a }; });
+      const cfgR = cfgOf(g, who);
+      cs.forEach(a => {
+        let sc = (a.pid === R.u ? -50 : S(g, a.pid).h * 10 + 5) + Math.random() * 6;
+        if (cfgR.noise < 10) { // si al rebotarlo allá quien contagió gana (el virus sale de su cuerpo y lo deja sano), prefiere devolvérselo
+          const r = E.redirect(g, who, a);
+          if (!r.err && r.g.status === 'ended' && (r.g.winTeam ? r.g.winTeam.indexOf(R.u) >= 0 : r.g.winner === R.u)) sc -= 1000;
+        }
+        if (!best || sc > best.sc) best = { sc, a };
+      });
       return best ? best.a : null;
     }
     const cands = E.redirectCandidates(g);
