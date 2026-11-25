@@ -6,7 +6,7 @@
 <title>Virus!</title>
 <meta name="description" content="Virus! el juego de cartas, en línea y sin cuentas">
 <meta name="theme-color" content="#0F473A">
-<script>window.VIRUS_BUILD='23-nov 23:40';</script>
+<script>window.VIRUS_BUILD='25-nov 14:05';</script>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -1054,8 +1054,9 @@ const Engine = (function () {
     const act = actor(g, u, redir), notExP = p => ex.indexOf(p) < 0, notEx = p => notExP(p) && !mate(g, act, p); // 2 vs 2: nada hostil al compañero (curarlo sí se puede)
     if (c.t === 'o') {
       if (c.c === 'mutant') { // el mutante se juega sacrificando un órgano propio: lo reemplaza
-        if (!body.length) return 'El órgano mutante reemplaza a uno de tus órganos: todavía no tienes ninguno.';
+        if (!body.some(s => st(s) !== 'free')) return 'El órgano mutante solo reemplaza a un órgano que tenga virus o medicina: ninguno de los tuyos lo tiene.';
         if (!body[a.idx]) return 'Elige el órgano que reemplazarás.';
+        if (st(body[a.idx]) === 'free') return 'El mutante solo reemplaza a un órgano que tenga virus o medicina.';
         return null;
       }
       return canReceive(body, c, -1) ? null : 'Ya tienes ese órgano en tu cuerpo.';
@@ -1091,7 +1092,7 @@ const Engine = (function () {
     const ex = (redir && g.redirect) ? g.redirect.excluded : [];
     if (ex.indexOf(pid) >= 0 && !(c.t === 'x' && c.k === 'alien')) return false;
     if (mate(g, actor(g, u, redir), pid) && (c.t === 'v' || (c.t === 'x' && (['steal', 'thief', 'swap', 'alien', 'unimmune'].indexOf(c.k) >= 0 || (c.k === 'failed' && mode === 'v'))))) return false; // 2 vs 2: nada hostil contra el compañero
-    if (c.t === 'o') return c.c === 'mutant' && pid === u && !!g.bodies[u][idx];
+    if (c.t === 'o') return c.c === 'mutant' && pid === u && !!g.bodies[u][idx] && st(g.bodies[u][idx]) !== 'free';
     if (c.t === 'v') return okVirus(g, u, c, pid, idx, redir);
     if (c.t === 'm') return okMed(g, u, c, pid, idx);
     switch (c.k) {
@@ -2589,7 +2590,7 @@ const Bot = (function () {
     g.hands[u].forEach(c => {
       if (c.t === 'x' && c.k === 'suit') { v += 3.5; return; }
       let use = 0;
-      if (c.t === 'o') use = c.c === 'mutant' ? (g.bodies[u].length ? 2 : 0) : (E.canReceive(g.bodies[u], c, -1) ? 4 : 0);
+      if (c.t === 'o') use = c.c === 'mutant' ? (g.bodies[u].some(s => E.st(s) !== 'free') ? 2 : 0) : (E.canReceive(g.bodies[u], c, -1) ? 4 : 0);
       else if (c.t === 'v' || c.t === 'm') {
         g.order.forEach(p => g.bodies[p].forEach((sl, i) => {
           if (c.t === 'v' ? p === u : p !== u) return;
@@ -2674,7 +2675,7 @@ const Bot = (function () {
   function candidates(g, u, c) {
     const out = [], P = g.order, organs = [];
     P.forEach(p => g.bodies[p].forEach((_, i) => organs.push([p, i])));
-    if (c.t === 'o') { if (c.c === 'mutant') g.bodies[u].forEach((_, i) => out.push({ idx: i })); else out.push({}); return out; } // el mutante solo se juega sacrificando un órgano propio
+    if (c.t === 'o') { if (c.c === 'mutant') g.bodies[u].forEach((sl, i) => { if (E.st(sl) !== 'free') out.push({ idx: i }); }); else out.push({}); return out; } // el mutante solo se juega sacrificando un órgano propio
     if (c.t === 'v' || c.t === 'm') { organs.forEach(o => out.push({ pid: o[0], idx: o[1] })); return out; }
     switch (c.k) {
       case 'steal': case 'thief': case 'quarantine': case 'unimmune': organs.forEach(o => out.push({ pid: o[0], idx: o[1] })); break;
@@ -2727,7 +2728,7 @@ const Bot = (function () {
     }
     if (c.t === 'o') {
       if (c.c === 'bionic' || c.c === 'wild') return 3.6;
-      if (c.c === 'mutant') return body.length ? 2.4 : 1.2;
+      if (c.c === 'mutant') return body.some(s => E.st(s) !== 'free') ? 2.4 : 1.2;
       if (E.canReceive(body, c, -1)) return 4;                     // un órgano que me falta
       return 1.2;                                                  // repetido: solo sirve de repuesto
     }
@@ -3250,7 +3251,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
   // ¿El motor aceptaría jugar esta carta sin objetivo ahora mismo?
   const playableNow = c => !E.apply(g, me, c.i, {}, { noSuit: true }).err;
   // Contagio: pasas TODOS tus virus posibles; eliges, virus por virus, a qué órgano libre ajeno va
-  const needsNoTarget = c => (c.t === 'o' && !(c.c === 'mutant' && g.bodies[me].length)) || (c.t === 'x' && (['glove', 'overtime', 'apparition'].indexOf(c.k) >= 0 || (c.k === 'spread' && !(inRedir() && g.redirect.kind === 'spread') && E.spreadMax(g, me) === 0)));
+  const needsNoTarget = c => (c.t === 'o' && !(c.c === 'mutant' && g.bodies[me].some(s => E.st(s) !== 'free'))) || (c.t === 'x' && (['glove', 'overtime', 'apparition'].indexOf(c.k) >= 0 || (c.k === 'spread' && !(inRedir() && g.redirect.kind === 'spread') && E.spreadMax(g, me) === 0)));
   function spChoice() {
     if (!ui.first || !ui.first.sp) ui.first = { sp: 1, k: 0, moves: [] };
     const f = ui.first, list = E.spreadOptions(g, me);
@@ -3548,7 +3549,7 @@ if (typeof module !== 'undefined') module.exports = Bot;
     return '<details class="rules"><summary>Cómo se juega</summary>' +
       '<p><b>Ya me voy:</b> mismas reglas, pero en tu turno puedes jugar <b>dos cartas</b> en lugar de una (o terminar tu turno después de la primera). Si en vez de jugar descartas, tu turno termina. Al final robas hasta tener 3. En este modo no hay cartas de Horas extra.</p>' +
       '<p><b>Equipos 2 vs 2:</b> con 4 jugadores. Los turnos se alternan entre un equipo y el otro, y los compañeros no se atacan: no puedes jugarle a tu compañero un virus, un ladrón, un trasplante, Contagio, Error médico, Segunda opinión ni Truco o trato. Lo que sí puedes hacer es ayudarlo: una medicina o una Cuarentena se puede poner en un órgano de tu compañero. Gana el equipo cuando cualquiera de los dos completa su cuerpo sano. Lo que afecta a todos (Guante de látex, Cambio de cuerpos) sí cuenta para todos.</p>' +
-      '<p>Gana quien primero tenga 4 órganos sanos (5 en el modo duelo con Evolution). El biónico y el mutante son órganos extra. El mutante se juega sacrificando uno de tus órganos: reemplaza al que elijas, y sin órganos no se puede jugar.</p>' +
+      '<p>Gana quien primero tenga 4 órganos sanos (5 en el modo duelo con Evolution). El biónico y el mutante son órganos extra. El mutante se juega sacrificando uno de tus órganos que tenga un virus o una medicina: reemplaza al que elijas, y si ninguno de tus órganos tiene nada encima no se puede jugar.</p>' +
       '<p>Órgano multicolor: sirve como cualquier color hasta que recibe un virus o una medicina de un color; entonces se convierte en ese órgano (y su dueño ya no puede poner otro de ese color). Por eso no se le puede jugar un virus o medicina de un color que su dueño ya tiene, ni robarlo o cambiarlo a quien ya tiene ese color. Si se destruye, vuelve a ser multicolor.</p>' +
       '<p>En tu turno juegas una carta o descartas de 1 a 3, y luego robas hasta tener 3.</p>' +
       '<p>Un virus infecta; una medicina cura o vacuna. Dos virus (normales o evolucionados) destruyen un órgano y dos medicinas (normales o experimentales) lo inmunizan.</p>' +
@@ -3680,13 +3681,13 @@ if (typeof module !== 'undefined') module.exports = Bot;
     }
     if (needsNoTarget(c) && !playableNow(c)) {
       if (myExtra() && c.t === 'x' && (myExtra().kind === 'yamevoy' ? ['overtime'] : ['overtime', 'second', 'apparition']).indexOf(c.k) >= 0) return 'Esa carta no se puede jugar dentro de un turno extra. Cancela y descártala.';
-      if (c.t === 'o' && c.c === 'mutant') return 'El órgano mutante reemplaza a uno de tus órganos y todavía no tienes ninguno, así que no lo puedes jugar. Descártalo o elige otra carta.';
+      if (c.t === 'o' && c.c === 'mutant') return 'El órgano mutante solo reemplaza a un órgano tuyo que tenga virus o medicina y ahora ninguno la tiene, así que no lo puedes jugar. Descártalo o elige otra carta.';
       if (c.t === 'o') return 'Ya tienes ese órgano. Elige otra carta.';
       if (c.k === 'apparition') return 'No hay cartas en el descarte.';
       if (c.k === 'overtime') return 'Necesitas otras cartas en la mano.';
     }
     if (c.t === 'o') {
-      if (c.c === 'mutant') return g.bodies[me].length ? 'Sacrifica un órgano: toca el órgano de tu cuerpo que el mutante va a reemplazar.' : 'El órgano mutante reemplaza a uno de tus órganos y todavía no tienes ninguno, así que no lo puedes jugar. Descártalo o elige otra carta.';
+      if (c.c === 'mutant') return g.bodies[me].some(s => E.st(s) !== 'free') ? 'Sacrifica un órgano con virus o medicina: toca el órgano de tu cuerpo que el mutante va a reemplazar.' : 'El órgano mutante solo reemplaza a un órgano tuyo que tenga virus o medicina y ahora ninguno la tiene, así que no lo puedes jugar. Descártalo o elige otra carta.';
       return E.canReceive(g.bodies[me], c, -1) ? 'Pon este órgano en tu cuerpo.' : 'Ya tienes ese órgano. Elige otra carta.';
     }
     if (c.t === 'v') return 'Toca el órgano rival que quieres infectar' + (c.ev ? ' (virus evolucionado)' : '') + '.';
